@@ -17,7 +17,6 @@ STATE_PLAYING = "playing"
 STATE_EDITOR = "editor"
 STATE_PAUSED = "paused"
 STATE_GAMEOVER = "gameover"
-STATE_WIN = "win"
 STATE_PROMPT = "prompt"   # modal yes/no question (stage advancement)
 
 
@@ -96,6 +95,9 @@ class Game:
 
     # ------------------------------------------------------------- lifecycle
     def _new_world(self):
+        # drop queued LLM work from the previous population so the new
+        # rivals' spawn decisions aren't stuck behind stale requests
+        self.manager.clear_pending()
         self.world = World(self.manager, ai_count=self.args.ai_cells, demo=self.demo)
         self.controller = PlayerController(self.world.player)
         self.camera.snap(self.world.player.pos, self.world.player.radius)
@@ -154,7 +156,7 @@ class Game:
                 self.running = False
         elif event.key == pygame.K_TAB:
             self.show_overlay = not self.show_overlay
-        elif event.key == pygame.K_r and self.state in (STATE_GAMEOVER, STATE_WIN):
+        elif event.key == pygame.K_r and self.state == STATE_GAMEOVER:
             self._new_world()
         elif event.key == pygame.K_e and self.state == STATE_PLAYING:
             if self.mate is not None:
@@ -229,17 +231,22 @@ class Game:
         self.prompt = {
             "title": "EVOLVE A BRAIN?",
             "sub": ("Your organism has mastered the multicellular stage. "
-                    "Evolving a brain completes your aquatic journey. You can "
-                    "also keep swimming and say yes later (press M)."),
+                    "Growing a brain makes you a FISH - the apex of the pond. "
+                    "Fish never stop evolving: every level of DNA makes you "
+                    "larger and stronger, forever. You can also stay as you "
+                    "are and say yes later (press M)."),
             "yes": self._do_brain,
             "no": self._decline_brain,
         }
         self.state = STATE_PROMPT
 
     def _do_brain(self):
-        self.world.player.brain_evolved = True
+        p = self.world.player
+        p.become_fish()
+        self.world.log("You grew a brain - you are now a FISH! Keep eating "
+                       "and growing; the pond is yours to rule.", C.C_MULTI)
         self.prompt = None
-        self.state = STATE_WIN
+        self.state = STATE_PLAYING
 
     def _decline_brain(self):
         self.brain_declined = True
@@ -269,7 +276,10 @@ class Game:
     def _update(self, dt):
         if self.state == STATE_PLAYING:
             self._update_playing(dt)
-        # editor / paused / gameover / win: world is frozen
+        elif self.state == STATE_PROMPT and self.demo and self.prompt:
+            # hands-off demo: nobody can press Y, so the AI always says yes
+            self.prompt["yes"]()
+        # editor / paused / gameover: world is frozen
 
     def _update_playing(self, dt):
         if not self.demo:
@@ -287,10 +297,13 @@ class Game:
 
         if self.world.player_dead:
             self.state = STATE_GAMEOVER
-        elif (self.world.player.can_advance_stage()
-                and not self.advance_declined and self.mate is None):
-            # first time the bar fills mid-swim, offer the next stage
-            self._offer_advance()
+        elif self.mate is None:
+            # first time a stage bar fills mid-swim, offer what comes next
+            p = self.world.player
+            if p.can_advance_stage() and not self.advance_declined:
+                self._offer_advance()
+            elif p.can_evolve_brain() and not self.brain_declined:
+                self._offer_brain()
 
     # ---------------------------------------------------------------- draw
     def _draw(self):
@@ -312,17 +325,13 @@ class Game:
             self._overlay_text(s, "PAUSED", "Esc to resume")
         elif self.state == STATE_GAMEOVER:
             p = self.world.player
+            stage = {"cell": "cell", "multi": "multicellular",
+                     "fish": "fish"}[p.stage]
             self._overlay_text(
                 s, "You were consumed",
-                f"Survived {int(p.time_alive)}s  -  reached level {p.growth_level}  -  "
-                f"{p.food_eaten} eaten.   R: try again   Esc: quit",
+                f"Survived {int(p.time_alive)}s as a {stage} (level {p.growth_level})"
+                f"  -  {p.food_eaten} eaten.   R: try again   Esc: quit",
                 color=C.C_BAD)
-        elif self.state == STATE_WIN:
-            self._overlay_text(
-                s, "YOU EVOLVED A BRAIN!",
-                "Your organism conquered the primordial ocean. The land awaits... "
-                "TO BE CONTINUED.   R: new game   Esc: quit",
-                color=C.C_MULTI)
 
     def _draw_prompt(self, surface):
         W, H = surface.get_size()

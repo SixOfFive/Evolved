@@ -22,11 +22,13 @@ license. Everything you see is generated from shapes and math at runtime.
   flagella (speed), cilia (turning), spikes (attack/defense), poison, electric jets, and the three mouths.
 - **Combat** — ram rival cells; spikes and offensive mouths deal damage, defensive parts punish attackers.
   Killed cells burst into meat chunks that carnivores can eat.
-- **Two stages** — fill the cell stage's evolution bar and the game *asks* whether you want to become
-  **multicellular** (YES / NOT YET — declining lets you keep playing, press `M` to advance later).
-  The multicellular stage adds trailing **body segments**, **muscle cells** (speed/turning),
+- **Three stages, one pond** — fill the cell stage's evolution bar and the game *asks* whether you want
+  to become **multicellular** (YES / NOT YET — declining lets you keep playing, press `M` to advance
+  later). The multicellular stage adds trailing **body segments**, **muscle cells** (speed/turning),
   **sensory cells** (awareness), **stingers** (contact damage), **armor plates** (damage reduction)
-  and **photo cells** (passive energy). Master it and choose to **evolve a brain** to finish the journey.
+  and **photo cells** (passive energy). Master it and choose to **evolve a brain** — which makes you a
+  **FISH**, the apex of the pond. There is no leaving the water: the fish stage is the endless endgame,
+  where every DNA level makes you larger, tougher, and harder-hitting (+7% damage per level, forever).
 - **LLM-controlled rivals** — each new rival asks a local LLM (`qwen3:4b` on Ollama) whether it will
   *hunt*, *harvest*, or *both* — then keeps consulting the model for strategy (forage / hunt / flee,
   which parts to evolve, when to grow). A fast heuristic executes the plan every frame, so the game

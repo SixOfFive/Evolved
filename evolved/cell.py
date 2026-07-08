@@ -52,8 +52,8 @@ class Cell:
         self.growth_level = 0      # level within the CURRENT stage
         self.dna = 0.0
         self.generation = 1
-        self.stage = "cell"        # "cell" -> "multi"
-        self.brain_evolved = False  # end of the multicellular stage
+        self.stage = "cell"        # "cell" -> "multi" -> "fish"
+        self.slot_bonus = 0        # slots carried over from completed stages
         # multicellular body: world-space positions/radii of trailing segments
         self.seg_pos = []
         self.seg_radius = []
@@ -87,6 +87,7 @@ class Cell:
         self.n_spike = 0
         self.n_sting = 0
         self.armor_mult = 1.0      # incoming damage multiplier (<=1)
+        self.damage_mult = 1.0     # outgoing damage multiplier (fish levels)
         self.photo_rate = 0.0      # passive energy/s from photosynthesis
         self.has_poison = False
         self.has_electric = False
@@ -113,7 +114,7 @@ class Cell:
         out = []
         for pid in P.PART_ORDER:
             pdef = P.PART_DEFS[pid]
-            if pdef.stage == "multi" and self.stage != "multi":
+            if pdef.stage == "multi" and self.stage == "cell":
                 continue
             if pdef.unlock_level <= self.growth_level or pid in self.discovered:
                 out.append(pid)
@@ -121,7 +122,7 @@ class Cell:
 
     def can_add(self, part_id, spend=True):
         pdef = P.PART_DEFS[part_id]
-        if pdef.stage == "multi" and self.stage != "multi":
+        if pdef.stage == "multi" and self.stage == "cell":
             return False
         if self.slots_used() >= self.max_slots:
             return False
@@ -164,12 +165,17 @@ class Cell:
 
     # -------------------------------------------------------------- evolution
     def grow_cost(self):
+        if self.stage == "fish":
+            return C.FISH_GROW_COST * (1 + self.growth_level * C.FISH_GROW_COST_SCALE)
         base = C.MULTI_GROW_COST if self.stage == "multi" else C.BASE_GROW_COST
         return base * (self.growth_level + 1)
 
     def can_grow(self):
-        return (self.dna >= self.grow_cost()
-                and self.radius < C.MAX_RADIUS
+        if self.dna < self.grow_cost():
+            return False
+        if self.stage == "fish":
+            return True  # fish never stop growing stronger
+        return (self.radius < C.MAX_RADIUS
                 and self.growth_level < C.STAGE_MAX_LEVEL)
 
     def grow(self):
@@ -177,29 +183,37 @@ class Cell:
             return False
         self.dna -= self.grow_cost()
         self.growth_level += 1
-        mult = (C.MULTI_GROW_RADIUS_MULT if self.stage == "multi"
-                else C.GROW_RADIUS_MULT)
-        self.radius = min(C.MAX_RADIUS, self.radius * mult)
+        if self.stage == "fish":
+            # size caps out eventually; strength and health never do
+            self.radius = min(C.FISH_MAX_RADIUS,
+                              self.radius * C.FISH_GROW_RADIUS_MULT)
+        else:
+            mult = (C.MULTI_GROW_RADIUS_MULT if self.stage == "multi"
+                    else C.GROW_RADIUS_MULT)
+            self.radius = min(C.MAX_RADIUS, self.radius * mult)
         self.recompute()
         self.health = self.max_health  # a growth spurt restores you
         return True
 
     def stage_complete(self):
         """This stage's evolution bar is full - the next stage is on offer."""
+        if self.stage == "fish":
+            return False  # the fish stage is endless
         return self.growth_level >= C.STAGE_MAX_LEVEL
 
     def can_advance_stage(self):
         return self.stage == "cell" and self.stage_complete()
 
     def can_evolve_brain(self):
-        return (self.stage == "multi" and self.stage_complete()
-                and not self.brain_evolved)
+        return self.stage == "multi" and self.stage_complete()
 
     def advance_stage(self):
         """Become multicellular: reset the level bar, sprout body segments."""
         if not self.can_advance_stage():
             return False
         self.stage = "multi"
+        # slots earned in the cell stage carry over - never regress capacity
+        self.slot_bonus += C.STAGE_MAX_LEVEL * C.SLOTS_PER_LEVEL
         self.growth_level = 0
         # everything from the cell stage stays unlocked forever
         self.discovered.update(P.CELL_STAGE_PARTS)
@@ -209,10 +223,29 @@ class Cell:
         self.energy = self.max_energy
         return True
 
+    def become_fish(self):
+        """Grow a brain: the final form. Endless growth, same pond."""
+        if not self.can_evolve_brain():
+            return False
+        self.stage = "fish"
+        self.slot_bonus += C.STAGE_MAX_LEVEL * C.SLOTS_PER_LEVEL
+        self.growth_level = 0
+        # everything from the multicellular stage stays unlocked forever
+        self.discovered.update(P.MULTI_STAGE_PARTS)
+        self.radius = min(C.FISH_MAX_RADIUS, self.radius * 1.1)
+        self.recompute()
+        self.health = self.max_health
+        self.energy = self.max_energy
+        return True
+
     def n_segments(self):
-        if self.stage != "multi":
-            return 0
-        return 2 + self.part_counts().get("segment", 0)
+        if self.stage == "multi":
+            return 2 + self.part_counts().get("segment", 0)
+        if self.stage == "fish":
+            # fish lengthen as they level, up to a point
+            return (3 + self.part_counts().get("segment", 0)
+                    + min(6, self.growth_level // 2))
+        return 0
 
     def recompute(self):
         counts = self.part_counts()
@@ -255,11 +288,17 @@ class Cell:
         self.detect_range = 360.0 + n_eye * 150.0 + n_sensor * C.SENSOR_RANGE
         segs = self.n_segments()
         self.max_slots = (C.BASE_SLOTS + self.growth_level * C.SLOTS_PER_LEVEL
-                          + segs * C.SEGMENT_SLOTS)
+                          + segs * C.SEGMENT_SLOTS + self.slot_bonus)
+
+        # fish grow ever stronger with each level
+        self.damage_mult = (1.0 + self.growth_level * C.FISH_DMG_PER_LEVEL
+                            if self.stage == "fish" else 1.0)
 
         new_max = (C.BASE_HEALTH
                    + (self.radius - C.START_RADIUS) * C.HEALTH_PER_RADIUS
-                   + segs * C.SEGMENT_HP)
+                   + segs * C.SEGMENT_HP
+                   + (self.growth_level * C.FISH_HP_PER_LEVEL
+                      if self.stage == "fish" else 0.0))
         if new_max > self.max_health:
             # keep same fraction of health when max grows
             frac = self.health / self.max_health if self.max_health else 1.0
@@ -463,6 +502,17 @@ class Cell:
             elif ap.id == "sensor":
                 self._draw_sensor(surface, sx, sy, r, ap, t)
 
+        # fish get pectoral fins beside the head, always
+        if self.stage == "fish":
+            for side in (1, -1):
+                fa = self.angle + side * 1.9
+                flap = math.sin(t * 7 + side) * 0.3
+                base = self._p(sx, sy, r, fa, r * 0.9)
+                tip = self._p(sx, sy, r, fa + flap * side, r * 1.9)
+                mid = self._p(sx, sy, r, fa + 0.5 * side, r * 1.1)
+                pygame.draw.polygon(surface, self._shade(self.color, 1.25),
+                                    [base, tip, mid])
+
         if self.is_player:
             # a bright ring so the player is always identifiable
             pygame.draw.circle(surface, (255, 255, 255), (sx, sy),
@@ -524,6 +574,26 @@ class Cell:
                 pygame.draw.arc(surface, (200, 200, 190), rect,
                                 seg_ang + 2.2, seg_ang - 2.2 + math.tau,
                                 max(2, int(3 * cam.zoom)))
+
+        # fish tail: a swaying forked caudal fin on the last segment
+        if self.stage == "fish" and self.seg_pos:
+            tail = self.seg_pos[-1]
+            tsx, tsy = cam.world_to_screen(tail)
+            tr = max(3.0, self.seg_radius[-1] * cam.zoom)
+            lead = self.seg_pos[-2] if len(self.seg_pos) > 1 else self.pos
+            back = pygame.Vector2(tail) - pygame.Vector2(lead)
+            back_ang = (math.atan2(back.y, back.x)
+                        if back.length_squared() > 1e-6 else self.angle + math.pi)
+            sway = math.sin(t * 6) * 0.35
+            for lobe in (0.55, -0.55):
+                a = back_ang + lobe + sway
+                tip = (tsx + math.cos(a) * tr * 3.0, tsy + math.sin(a) * tr * 3.0)
+                b1 = (tsx + math.cos(back_ang + 1.5) * tr * 0.6,
+                      tsy + math.sin(back_ang + 1.5) * tr * 0.6)
+                b2 = (tsx + math.cos(back_ang - 1.5) * tr * 0.6,
+                      tsy + math.sin(back_ang - 1.5) * tr * 0.6)
+                pygame.draw.polygon(surface, self._shade(self.color, 1.2),
+                                    [tip, b1, b2])
 
         # stingers: wavy tentacles trailing off the tail segment
         if self.n_sting > 0 and self.seg_pos:

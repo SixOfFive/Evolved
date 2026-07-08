@@ -82,7 +82,14 @@ class OllamaClient:
 
 
 class LLMManager:
-    """Threaded, coalescing request pump around an OllamaClient."""
+    """Threaded, coalescing request pump around an OllamaClient.
+
+    Several worker threads run in parallel so a burst of requests (e.g. ten
+    rivals all making their spawn-time strategy call) doesn't serialize behind
+    one slow HTTP round-trip.
+    """
+
+    WORKERS = 4
 
     def __init__(self, client, enabled=True):
         self.client = client
@@ -92,15 +99,33 @@ class LLMManager:
         self._inflight = set()
         self._inflight_lock = threading.Lock()
         self._stop = threading.Event()
-        self._thread = None
+        self._threads = []
         self.stats = {"requests": 0, "ok": 0, "fail": 0}
 
     def start(self):
         if not self.enabled:
             return
-        self._thread = threading.Thread(target=self._worker, daemon=True,
-                                        name="llm-worker")
-        self._thread.start()
+        for i in range(self.WORKERS):
+            t = threading.Thread(target=self._worker, daemon=True,
+                                 name=f"llm-worker-{i}")
+            t.start()
+            self._threads.append(t)
+
+    def clear_pending(self):
+        """Drop queued (not yet started) jobs and stale results.
+
+        Called on world reset so requests from dead cells don't occupy the
+        workers ahead of the new population's spawn decisions.
+        """
+        for q in (self._jobs, self._results):
+            while True:
+                try:
+                    job = q.get_nowait()
+                except queue.Empty:
+                    break
+                if q is self._jobs:
+                    with self._inflight_lock:
+                        self._inflight.discard(job[0])
 
     def busy(self, cell_id):
         with self._inflight_lock:

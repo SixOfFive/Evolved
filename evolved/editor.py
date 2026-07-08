@@ -44,9 +44,9 @@ class Editor:
         self._size = size
         W, H = size
         self.buttons = []
-        # multicellular organisms see the whole catalog; cells see cell parts
-        part_ids = (P.PART_ORDER if player.stage == "multi"
-                    else P.CELL_STAGE_PARTS)
+        # multicellular organisms and fish see the whole catalog
+        part_ids = (P.CELL_STAGE_PARTS if player.stage == "cell"
+                    else P.PART_ORDER)
         cols = 3 if len(part_ids) > 10 else 2
         col_x = int(W * 0.52)
         grid_w = W - col_x - 40
@@ -124,13 +124,17 @@ class Editor:
 
         hud = self.hud
         # title
-        stage_name = ("MULTICELLULAR" if player.stage == "multi" else "CELL")
+        stage_name = {"cell": "CELL", "multi": "MULTICELLULAR",
+                      "fish": "FISH"}[player.stage]
         surface.blit(hud.font_l.render(f"EVOLUTION EDITOR - {stage_name} STAGE",
                                        True, C.C_MULTI), (40, 30))
+        level_txt = (f"Level: {player.growth_level} (endless)"
+                     if player.stage == "fish"
+                     else f"Level: {player.growth_level}/{C.STAGE_MAX_LEVEL}")
         surface.blit(hud.font_m.render(
             f"DNA: {int(player.dna)}    Slots: {player.slots_used()}/{player.max_slots}"
-            f"    Level: {player.growth_level}/{C.STAGE_MAX_LEVEL}    Diet: {player.diet}"
-            + (f"    Segments: {player.n_segments()}" if player.stage == "multi" else ""),
+            f"    {level_txt}    Diet: {player.diet}"
+            + (f"    Segments: {player.n_segments()}" if player.stage != "cell" else ""),
             True, C.C_TEXT), (40, 76))
 
         # preview panel (left) - frame the whole organism, segments included
@@ -206,7 +210,7 @@ class Editor:
             gcol = (36, 84, 62)
         pygame.draw.rect(surface, gcol, self.grow_rect, border_radius=6)
         pygame.draw.rect(surface, C.C_PANEL_LINE, self.grow_rect, 1, border_radius=6)
-        if player.growth_level < C.STAGE_MAX_LEVEL:
+        if player.stage == "fish" or player.growth_level < C.STAGE_MAX_LEVEL:
             gtxt = f"GROW  ({int(player.grow_cost())} DNA)"
         else:
             gtxt = "STAGE COMPLETE"

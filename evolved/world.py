@@ -31,6 +31,14 @@ class World:
         self.ai_count = ai_count
         self.player_dead = False
 
+        # --- food & meteors first, so spawn-time LLM snapshots see the world ---
+        for _ in range(C.PLANT_COUNT):
+            self.foods.append(Food(self._rand_pos(), "plant"))
+        for _ in range(C.ALGAE_COUNT):
+            self.foods.append(Food(self._rand_pos(), "algae"))
+        for _ in range(C.METEOR_COUNT):
+            self.meteors.append(Meteor(self._rand_pos()))
+
         # --- player ---
         self.player = Cell(self._center_spawn(), is_player=True,
                            color=C.C_PLAYER, name="You")
@@ -45,14 +53,6 @@ class World:
         # --- rivals ---
         for i in range(ai_count):
             self._spawn_rival(i)
-
-        # --- food & meteors ---
-        for _ in range(C.PLANT_COUNT):
-            self.foods.append(Food(self._rand_pos(), "plant"))
-        for _ in range(C.ALGAE_COUNT):
-            self.foods.append(Food(self._rand_pos(), "algae"))
-        for _ in range(C.METEOR_COUNT):
-            self.meteors.append(Meteor(self._rand_pos()))
 
     # ------------------------------------------------------------- spawning
     def _rand_pos(self):
@@ -192,9 +192,9 @@ class World:
                 self._bite(b, a, dt)
                 # poison auras
                 if a.has_poison and b.alive:
-                    b.take_damage(C.POISON_DMG * dt, a)
+                    b.take_damage(C.POISON_DMG * a.damage_mult * dt, a)
                 if b.has_poison and a.alive:
-                    a.take_damage(C.POISON_DMG * dt, b)
+                    a.take_damage(C.POISON_DMG * b.damage_mult * dt, b)
 
     def _bite(self, attacker, defender, dt):
         if not attacker.alive or not defender.alive:
@@ -227,7 +227,7 @@ class World:
         if attacker.n_sting:
             dmg += C.STING_DMG * min(attacker.n_sting, 3) * dt
         if dmg > 0:
-            defender.take_damage(dmg, attacker)
+            defender.take_damage(dmg * attacker.damage_mult, attacker)
 
     def _resolve_electric(self):
         for cell in self.cells:
@@ -237,7 +237,7 @@ class World:
                 if other is cell or not other.alive:
                     continue
                 if (other.pos - cell.pos).length() <= C.ELECTRIC_RANGE + other.radius:
-                    other.take_damage(C.ELECTRIC_DMG, cell)
+                    other.take_damage(C.ELECTRIC_DMG * cell.damage_mult, cell)
             if cell.is_player:
                 self.log("Zap! Electric discharge.", (150, 210, 255))
 

@@ -18,7 +18,7 @@ WORLD_H = 2400
 
 # Camera zoom: 1.0 = neutral. The camera zooms out (smaller value) as the
 # player's cell grows so the world stays readable.
-ZOOM_MIN = 0.42
+ZOOM_MIN = 0.30
 ZOOM_MAX = 1.6
 ZOOM_BASE = 1.35          # zoom when the player is at starting size
 ZOOM_REF_RADIUS = 15.0    # player radius that maps to ZOOM_BASE
@@ -69,6 +69,14 @@ ARMOR_REDUCE = 0.16       # damage reduction per armor plate (multiplicative)
 ARMOR_REDUCE_FLOOR = 0.30 # armor can never reduce damage below this fraction
 PHOTO_ENERGY = 1.5        # energy/s generated per photosynthetic cell
 SWALLOW_RATIO = 0.45      # prey this much smaller than you is swallowed whole
+
+# Fish stage (the endless endgame - there is no leaving the pond)
+FISH_GROW_COST = 40.0     # DNA for a fish level; scales gently and forever
+FISH_GROW_COST_SCALE = 0.55
+FISH_GROW_RADIUS_MULT = 1.07
+FISH_MAX_RADIUS = 115.0   # size caps here, but levels (and strength) never do
+FISH_HP_PER_LEVEL = 26.0  # extra max health per fish level
+FISH_DMG_PER_LEVEL = 0.07 # +7% outgoing damage per fish level, uncapped
 
 # ---------------------------------------------------------------------------
 # Food / world density

@@ -23,18 +23,19 @@ GOALS = ("forage", "hunt", "flee", "wander")
 
 _SYSTEM_PROMPT = (
     "You are the brain of a microbe competing to survive and evolve in a 2D "
-    "primordial ocean - like the water stages of Spore. You control ONE "
+    "primordial pond - like the water stages of Spore. You control ONE "
     "organism. Your aims: eat, avoid being eaten, gather DNA, evolve new "
-    "parts, GROW to fill each stage's bar, and advance from single cell to a "
-    "multicellular organism with a brain. "
+    "parts, GROW, and climb the stages: single cell -> multicellular -> FISH. "
+    "The fish stage is the endgame: there is no leaving the pond - fish keep "
+    "leveling forever with DNA, growing ever larger and stronger. "
     "Reply with ONLY compact JSON, no prose, of the form: "
     '{"goal":"forage|hunt|flee|wander","diet":"herbivore|carnivore|omnivore",'
     '"evolve":["part_id",...],"grow":true|false,"reason":"few words"}. '
     "Only choose evolve parts from allowed_parts. Herbivores eat plants/algae "
     "and must flee or defend; carnivores hunt smaller organisms and eat meat; "
-    "omnivores do both. In the multicellular stage prefer body segments, "
-    "muscles, stingers, armor and sensors. Flee when threats are bigger than "
-    "you. Be decisive and keep growing."
+    "omnivores do both. In the multicellular and fish stages prefer body "
+    "segments, muscles, stingers, armor and sensors. Flee when threats are "
+    "bigger than you. Be decisive and keep growing."
 )
 
 _SPAWN_PROMPT = (
@@ -263,62 +264,79 @@ class AIBrain:
         if self.awaiting_spawn_choice:
             return  # no strategy yet - wait for the LLM (or the fallback)
 
-        # 0) stage advancement: rivals push on to multicellular when ready
+        # 0) stage advancement: rivals push on when ready
         if cell.can_advance_stage():
             cell.advance_stage()
             self.world.log(f"{cell.name} evolved into a multicellular organism!",
                            (200, 160, 255))
             return
-
-        # 1) ensure a mouth matching the intended diet
-        if cell.diet == "none":
-            self._buy_mouth_for(self.intended_diet)
-            return
-        # upgrade toward the intended diet (e.g. herbivore -> omnivore)
-        if self.intended_diet == "omnivore" and cell.diet != "omnivore":
-            if cell.diet == "herbivore":
-                self._try_buy("jaw")
-            elif cell.diet == "carnivore":
-                self._try_buy("filter_mouth")
-            return
-        if self.intended_diet == "carnivore" and cell.diet == "herbivore":
-            self._try_buy("jaw")
+        if cell.can_evolve_brain():
+            cell.become_fish()
+            self.world.log(f"{cell.name} grew a brain and became a FISH!",
+                           (150, 220, 255))
             return
 
-        # 2) make sure it can move
-        if cell.part_counts().get("flagellum", 0) == 0:
-            if self._try_buy("flagellum"):
-                return
+        # buy at most one part per tick...
+        self._buy_one_part()
 
-        # 3) predators want a weapon
-        if (self.intended_diet in ("carnivore", "omnivore")
-                and cell.n_spike == 0 and "spike" in cell.available_parts()):
-            if self._try_buy("spike"):
-                return
-
-        # 4) spend from the LLM wishlist, then stage-appropriate defaults.
-        # Cap repeat purchases (except segments) so builds stay varied.
-        defaults = _MULTI_PRIORITY if cell.stage == "multi" else _DEFAULT_PRIORITY
-        counts = cell.part_counts()
-        for pid in list(self.wishlist) + defaults:
-            if pid != "segment" and counts.get(pid, 0) >= 3:
-                continue
-            if pid in cell.available_parts() and self._try_buy(pid):
-                break
-
-        # 5) grow when we can afford to and still keep a small buffer
+        # ...but ALWAYS consider growing: a failed purchase must never block
+        # growth, because growing is what raises the slot cap.
         buffer = 6.0
         if cell.can_grow() and (self.want_grow or cell.dna >= cell.grow_cost() + buffer):
             cell.grow()
 
+    def _buy_one_part(self):
+        cell = self.cell
+        counts = cell.part_counts()
+
+        # 1) a mouth matching the intended diet comes first
+        if cell.diet == "none":
+            return self._buy_mouth_for(self.intended_diet)
+        # upgrade toward the intended diet (e.g. herbivore -> omnivore)
+        if self.intended_diet == "omnivore" and cell.diet != "omnivore":
+            if self._try_buy("filter_mouth" if cell.diet == "carnivore" else "jaw"):
+                return True
+        elif self.intended_diet == "carnivore" and cell.diet == "herbivore":
+            if self._try_buy("jaw"):
+                return True
+
+        # 2) make sure it can move
+        if counts.get("flagellum", 0) == 0 and self._try_buy("flagellum"):
+            return True
+
+        # 3) predators want a weapon
+        if (self.intended_diet in ("carnivore", "omnivore")
+                and cell.n_spike == 0 and "spike" in cell.available_parts()
+                and self._try_buy("spike")):
+            return True
+
+        # 4) spend from the LLM wishlist, then stage-appropriate defaults.
+        # Owned mouths are never rebought (duplicates do nothing), other
+        # repeats cap at 3 (except segments) so builds stay varied, and
+        # bought wishlist entries are consumed.
+        defaults = (_MULTI_PRIORITY if cell.stage in ("multi", "fish")
+                    else _DEFAULT_PRIORITY)
+        for pid in list(self.wishlist) + defaults:
+            if pid in P.MOUTH_PARTS and counts.get(pid, 0) > 0:
+                if pid in self.wishlist:
+                    self.wishlist.remove(pid)
+                continue
+            if pid != "segment" and counts.get(pid, 0) >= 3:
+                continue
+            if pid in cell.available_parts() and self._try_buy(pid):
+                if pid in self.wishlist:
+                    self.wishlist.remove(pid)
+                return True
+        return False
+
     def _buy_mouth_for(self, diet):
         if diet == "herbivore":
-            self._try_buy("filter_mouth")
-        elif diet == "carnivore":
-            self._try_buy("jaw")
-        else:  # omnivore -> start with whichever is available/affordable
-            if not self._try_buy("proboscis"):
-                self._try_buy("jaw") or self._try_buy("filter_mouth")
+            return self._try_buy("filter_mouth")
+        if diet == "carnivore":
+            return self._try_buy("jaw")
+        # omnivore -> start with whichever is available/affordable
+        return (self._try_buy("proboscis") or self._try_buy("jaw")
+                or self._try_buy("filter_mouth"))
 
     def _try_buy(self, part_id):
         cell = self.cell
@@ -387,8 +405,9 @@ class AIBrain:
             "meat_near": meats,
             "meteors_near": meteors,
             "stage_max_level": C.STAGE_MAX_LEVEL,
-            "next_stage": ("multicellular" if cell.stage == "cell"
-                           else "evolve a brain (final)"),
+            "next_stage": {"cell": "multicellular",
+                           "multi": "fish (grow a brain)",
+                           "fish": "none - keep leveling forever"}[cell.stage],
         }
 
     def apply_policy(self, policy):
