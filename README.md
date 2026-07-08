@@ -17,16 +17,20 @@ license. Everything you see is generated from shapes and math at runtime.
 - **Top-down swimming** in a large scrolling ocean; the camera zooms out as you grow.
 - **Three diets** — herbivore, carnivore, omnivore — each with its own mouth part and food source.
 - **Eating & nutrition** — graze on plant matter (green) and/or devour meat chunks and smaller cells (red).
+  Big organisms can graze algae clusters and swallow much smaller cells whole.
 - **Evolution editor** — spend DNA to attach organelles that change how your cell plays:
   flagella (speed), cilia (turning), spikes (attack/defense), poison, electric jets, and the three mouths.
 - **Combat** — ram rival cells; spikes and offensive mouths deal damage, defensive parts punish attackers.
   Killed cells burst into meat chunks that carnivores can eat.
-- **LLM-controlled rivals** — each AI cell asks a local LLM (`qwen3:4b` on Ollama) for a strategy
-  (forage / hunt / flee, which parts to evolve, what diet to pursue). A fast heuristic executes that
-  strategy every frame, so the game never stalls waiting on the model, and rivals evolve toward
-  multicellularity right alongside you.
-- **Growth loop** — enough DNA lets you grow larger and more complex; reach the complexity threshold to
-  trigger the **multicellular** transition.
+- **Two stages** — fill the cell stage's evolution bar and the game *asks* whether you want to become
+  **multicellular** (YES / NOT YET — declining lets you keep playing, press `M` to advance later).
+  The multicellular stage adds trailing **body segments**, **muscle cells** (speed/turning),
+  **sensory cells** (awareness), **stingers** (contact damage), **armor plates** (damage reduction)
+  and **photo cells** (passive energy). Master it and choose to **evolve a brain** to finish the journey.
+- **LLM-controlled rivals** — each new rival asks a local LLM (`qwen3:4b` on Ollama) whether it will
+  *hunt*, *harvest*, or *both* — then keeps consulting the model for strategy (forage / hunt / flee,
+  which parts to evolve, when to grow). A fast heuristic executes the plan every frame, so the game
+  never stalls, and rivals advance to multicellular right alongside you (watch for the `*` badge).
 
 ## Controls
 
@@ -34,7 +38,9 @@ license. Everything you see is generated from shapes and math at runtime.
 |-------|--------|
 | `W` `A` `S` `D` or Arrow keys | Swim (accelerate in that direction) |
 | Movement into another cell | Auto-attack on collision (if you have an offensive part) |
-| `E` | Open / close the **Evolution Editor** (when you have DNA to spend) |
+| `E` | Call a mate / open the **Evolution Editor** |
+| `M` | Advance to the next stage (when your evolution bar is full) |
+| `Y` / `N` | Answer a stage-advancement question |
 | `Space` | (Editor) confirm / reproduce & continue |
 | `Esc` | Pause / quit |
 | `Tab` | Toggle debug / AI overlay |

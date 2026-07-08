@@ -296,9 +296,13 @@ class AIBrain:
             if self._try_buy("spike"):
                 return
 
-        # 4) spend from the LLM wishlist, then stage-appropriate defaults
+        # 4) spend from the LLM wishlist, then stage-appropriate defaults.
+        # Cap repeat purchases (except segments) so builds stay varied.
         defaults = _MULTI_PRIORITY if cell.stage == "multi" else _DEFAULT_PRIORITY
+        counts = cell.part_counts()
         for pid in list(self.wishlist) + defaults:
+            if pid != "segment" and counts.get(pid, 0) >= 3:
+                continue
             if pid in cell.available_parts() and self._try_buy(pid):
                 break
 
