@@ -96,6 +96,7 @@ class Game:
         self.state = STATE_PLAYING
 
     def run(self):
+        autoquit = float(getattr(self.args, "autoquit", 0) or 0)
         while self.running:
             dt = self.clock.tick(C.FPS) / 1000.0
             dt = min(dt, 0.05)  # clamp big hitches
@@ -105,6 +106,8 @@ class Game:
             self._draw()
             if not getattr(self.args, "headless", False):
                 pygame.display.flip()
+            if autoquit and self.t >= autoquit:
+                self.running = False
         self.manager.stop()
         pygame.quit()
 
@@ -242,6 +245,13 @@ class Game:
             self.t += dt
             self.world.update(dt, self.t)
             self.camera.follow(self.world.player.pos, self.world.player.radius, dt)
+            if self.world.player_dead:
+                # respawn so the screenshot always shows a living cell
+                self._new_world()
+                if self.world.player.brain is None:
+                    from .ai import AIBrain
+                    self.world.player.brain = AIBrain(self.world.player, self.world,
+                                                      self.manager)
         self._draw()
         pygame.image.save(self.screen, path)
         print(f"[Evolved] saved gameplay screenshot -> {path}")

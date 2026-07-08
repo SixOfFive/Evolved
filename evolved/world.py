@@ -64,7 +64,7 @@ class World:
         """A position away from the player, for fresh rivals."""
         for _ in range(20):
             p = pygame.Vector2(self._rand_pos())
-            if (p - self.player.pos).length() > 700:
+            if 480 < (p - self.player.pos).length() < 1200:
                 return p
         return pygame.Vector2(self._rand_pos())
 
@@ -247,11 +247,9 @@ class World:
             self.foods.append(Food(cell.pos + off, "meat"))
 
     def _restock(self, dt):
-        # keep plants topped up
-        self._food_timer -= dt
+        # keep plants topped up (a few per frame so the ocean stays fed)
         plants = sum(1 for f in self.foods if f.alive and f.kind == "plant")
-        if plants < C.PLANT_COUNT and self._food_timer <= 0:
-            self._food_timer = 0.25
+        for _ in range(min(3, C.PLANT_COUNT - plants)):
             self.foods.append(Food(self._rand_pos(), "plant"))
         # drop the occasional meteor
         live_meteors = sum(1 for m in self.meteors if m.alive)

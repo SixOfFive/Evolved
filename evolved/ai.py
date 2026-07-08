@@ -130,6 +130,20 @@ class AIBrain:
                 self._flee_from(threat.pos)
                 return
 
+        # hunger: when energy runs low, drop everything and go eat
+        if cell.energy < cell.max_energy * 0.35:
+            kinds = []
+            if cell.can_eat_plant:
+                kinds.append("plant")
+            if cell.can_eat_meat:
+                kinds.append("meat")
+            food = self._nearest_food(tuple(kinds), detect * 1.6) if kinds else None
+            if food is None and cell.can_bite_cells:
+                food = self._nearest_cell(lambda o: cell.tier_of(o) == "prey", detect)
+            if food is not None:
+                self._seek(food.pos)
+                return
+
         goal = self.goal
         if goal == "flee" and threat is not None:
             self._flee_from(threat.pos)
@@ -225,8 +239,8 @@ class AIBrain:
             if pid in cell.available_parts() and self._try_buy(pid):
                 break
 
-        # 5) grow when we can afford to and still keep a buffer
-        buffer = 12.0
+        # 5) grow when we can afford to and still keep a small buffer
+        buffer = 6.0
         if cell.can_grow() and (self.want_grow or cell.dna >= cell.grow_cost() + buffer):
             cell.grow()
 

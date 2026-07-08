@@ -34,6 +34,8 @@ def parse_args():
                     help="headless: simulate then save a PNG to PATH and exit")
     ap.add_argument("--frames", type=int, default=300,
                     help="frames to simulate before a screenshot")
+    ap.add_argument("--autoquit", type=float, default=0.0,
+                    help="auto-close the window after N seconds (for testing)")
     return ap.parse_args()
 
 

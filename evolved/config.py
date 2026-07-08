@@ -13,8 +13,8 @@ SCREEN_H = 800
 FPS = 60
 TITLE = "Evolved - Cell Stage"
 
-WORLD_W = 4200
-WORLD_H = 3200
+WORLD_W = 3200
+WORLD_H = 2400
 
 # Camera zoom: 1.0 = neutral. The camera zooms out (smaller value) as the
 # player's cell grows so the world stays readable.
@@ -43,7 +43,7 @@ HEALTH_REGEN = 3.5        # hp/s regen when well fed
 BASE_ENERGY = 100.0
 ENERGY_DRAIN = 1.4        # energy/s at rest (metabolism)
 ENERGY_MOVE_DRAIN = 2.2   # extra energy/s at full throttle
-STARVE_DAMAGE = 6.0       # hp/s lost when energy is empty
+STARVE_DAMAGE = 4.0       # hp/s lost when energy is empty
 WELL_FED_ENERGY = 45.0    # energy above which health regenerates
 
 # ---------------------------------------------------------------------------
@@ -52,20 +52,20 @@ WELL_FED_ENERGY = 45.0    # energy above which health regenerates
 BASE_SLOTS = 5            # part slots at growth level 0
 SLOTS_PER_LEVEL = 2
 GROW_RADIUS_MULT = 1.13
-BASE_GROW_COST = 22.0     # DNA to grow; scales up with each level
+BASE_GROW_COST = 18.0     # DNA to grow; scales up with each level
 MULTICELLULAR_LEVEL = 5   # growth level that triggers the multicellular win
 
 # ---------------------------------------------------------------------------
 # Food / world density
 # ---------------------------------------------------------------------------
-PLANT_COUNT = 150
+PLANT_COUNT = 210
 MEAT_DECAY = 22.0         # seconds before an un-eaten meat chunk dissolves
-METEOR_COUNT = 10
+METEOR_COUNT = 12
 PLANT_RADIUS = 5.0
 MEAT_RADIUS = 6.5
 METEOR_RADIUS = 9.0
 
-PLANT_DNA = 2.0
+PLANT_DNA = 2.4
 PLANT_ENERGY = 13.0
 MEAT_DNA = 3.2
 MEAT_ENERGY = 19.0
