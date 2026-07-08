@@ -1,6 +1,7 @@
 """Game shell: window, states, main loop, and the screenshot/demo harness."""
 
 import math
+import os
 
 import pygame
 
@@ -108,6 +109,11 @@ class Game:
                 pygame.display.flip()
             if autoquit and self.t >= autoquit:
                 self.running = False
+        if os.environ.get("EVOLVED_DEBUG"):
+            p = self.world.player
+            print(f"[Evolved] LLM stats: {self.manager.stats}")
+            print(f"[Evolved] player level={p.growth_level} energy={int(p.energy)} "
+                  f"alive={p.alive} rivals={sum(1 for c in self.world.cells if not c.is_player and c.alive)}")
         self.manager.stop()
         pygame.quit()
 
