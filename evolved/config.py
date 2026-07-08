@@ -18,7 +18,7 @@ WORLD_H = 2400
 
 # Camera zoom: 1.0 = neutral. The camera zooms out (smaller value) as the
 # player's cell grows so the world stays readable.
-ZOOM_MIN = 0.55
+ZOOM_MIN = 0.42
 ZOOM_MAX = 1.6
 ZOOM_BASE = 1.35          # zoom when the player is at starting size
 ZOOM_REF_RADIUS = 15.0    # player radius that maps to ZOOM_BASE
@@ -47,13 +47,28 @@ STARVE_DAMAGE = 4.0       # hp/s lost when energy is empty
 WELL_FED_ENERGY = 45.0    # energy above which health regenerates
 
 # ---------------------------------------------------------------------------
-# Growth / evolution
+# Growth / evolution / stages
 # ---------------------------------------------------------------------------
 BASE_SLOTS = 5            # part slots at growth level 0
 SLOTS_PER_LEVEL = 2
 GROW_RADIUS_MULT = 1.13
 BASE_GROW_COST = 18.0     # DNA to grow; scales up with each level
-MULTICELLULAR_LEVEL = 5   # growth level that triggers the multicellular win
+STAGE_MAX_LEVEL = 5       # levels per stage; filling the bar offers the next stage
+
+# Multicellular stage
+MULTI_GROW_COST = 30.0    # DNA per growth level in the multicellular stage
+MULTI_GROW_RADIUS_MULT = 1.10
+SEGMENT_HP = 32.0         # extra max health per body segment
+SEGMENT_SLOTS = 2         # extra part slots per body segment
+SEGMENT_SPACING = 0.72    # segment spacing as a fraction of head radius
+MUSCLE_SPEED = 46.0       # + top speed per muscle cell
+MUSCLE_TURN = 0.6         # + turn rate per muscle cell
+SENSOR_RANGE = 210.0      # + detect range per sensory cell
+STING_DMG = 30.0          # dmg/s per stinger on contact (no facing needed)
+ARMOR_REDUCE = 0.16       # damage reduction per armor plate (multiplicative)
+ARMOR_REDUCE_FLOOR = 0.30 # armor can never reduce damage below this fraction
+PHOTO_ENERGY = 1.5        # energy/s generated per photosynthetic cell
+SWALLOW_RATIO = 0.45      # prey this much smaller than you is swallowed whole
 
 # ---------------------------------------------------------------------------
 # Food / world density
@@ -61,15 +76,20 @@ MULTICELLULAR_LEVEL = 5   # growth level that triggers the multicellular win
 PLANT_COUNT = 210
 MEAT_DECAY = 22.0         # seconds before an un-eaten meat chunk dissolves
 METEOR_COUNT = 12
+ALGAE_COUNT = 45          # big plant clusters, food for large/multicellular life
 PLANT_RADIUS = 5.0
 MEAT_RADIUS = 6.5
 METEOR_RADIUS = 9.0
+ALGAE_RADIUS = 15.0
+ALGAE_MIN_EATER = 24.0    # a cell must be at least this big to graze algae
 
 PLANT_DNA = 2.4
 PLANT_ENERGY = 13.0
 MEAT_DNA = 3.2
 MEAT_ENERGY = 19.0
 METEOR_DNA = 11.0
+ALGAE_DNA = 7.0
+ALGAE_ENERGY = 34.0
 
 # ---------------------------------------------------------------------------
 # Combat
@@ -103,6 +123,8 @@ C_WATER_BOT = (3, 12, 26)
 C_GRID = (255, 255, 255)     # drawn very faint
 C_PLANT = (86, 200, 120)
 C_PLANT_CORE = (170, 245, 190)
+C_ALGAE = (48, 150, 92)
+C_ALGAE_CORE = (110, 205, 140)
 C_MEAT = (206, 78, 78)
 C_MEAT_CORE = (250, 150, 140)
 C_METEOR = (150, 130, 230)

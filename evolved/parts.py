@@ -25,6 +25,9 @@ class PartDef:
     key: str = ""  # editor hotkey
     # growth level at which this part becomes available in the editor
     unlock_level: int = 0
+    # which stage introduces the part: "cell" parts stay usable forever,
+    # "multi" parts only exist once an organism is multicellular.
+    stage: str = "cell"
 
 
 # math.pi ~ 3.14159 used inline to avoid importing math at module import time
@@ -81,6 +84,39 @@ PART_DEFS = {
         prefer_angle=0.5, key="9",
         desc="A light-sensing spot. Widens how far you perceive the world.",
     ),
+    # =====================================================================
+    # Multicellular-stage parts
+    # =====================================================================
+    "segment": PartDef(
+        id="segment", name="Body Segment", category="body", cost=20,
+        prefer_angle=None, key="q", stage="multi",
+        desc="Grow another body cell: more health and part slots.",
+    ),
+    "muscle": PartDef(
+        id="muscle", name="Muscle Cell", category="movement", cost=16,
+        prefer_angle=None, key="w", stage="multi",
+        desc="Contractile tissue. Faster swimming and sharper turns.",
+    ),
+    "sensor": PartDef(
+        id="sensor", name="Sensory Cell", category="sense", cost=12,
+        prefer_angle=None, key="t", stage="multi",
+        desc="A nerve net node. Greatly extends your awareness.",
+    ),
+    "stinger": PartDef(
+        id="stinger", name="Stinger", category="offense", cost=18,
+        prefer_angle=None, key="y", stage="multi", unlock_level=1,
+        desc="Trailing nematocyst tentacles. Stings anything you touch.",
+    ),
+    "armor": PartDef(
+        id="armor", name="Armor Plate", category="defense", cost=18,
+        prefer_angle=None, key="u", stage="multi", unlock_level=1,
+        desc="A chitin plate. Reduces all damage you take.",
+    ),
+    "photo_cell": PartDef(
+        id="photo_cell", name="Photo Cell", category="body", cost=15,
+        prefer_angle=None, key="i", stage="multi", unlock_level=2,
+        desc="Photosynthetic tissue. Slowly generates energy from light.",
+    ),
 }
 
 # Ordered list for the editor / LLM option menus
@@ -88,7 +124,11 @@ PART_ORDER = [
     "filter_mouth", "jaw", "proboscis",
     "flagellum", "cilia",
     "spike", "electric", "poison", "eye",
+    "segment", "muscle", "sensor", "stinger", "armor", "photo_cell",
 ]
+
+CELL_STAGE_PARTS = [pid for pid in PART_ORDER if PART_DEFS[pid].stage == "cell"]
+MULTI_STAGE_PARTS = [pid for pid in PART_ORDER if PART_DEFS[pid].stage == "multi"]
 
 MOUTH_PARTS = {"filter_mouth", "jaw", "proboscis"}
 DIET_OF_MOUTH = {

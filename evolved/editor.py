@@ -38,23 +38,27 @@ class Editor:
 
     def open(self, surface, player):
         self.message = ""
-        self.layout(surface.get_size())
+        self.layout(surface.get_size(), player)
 
-    def layout(self, size):
+    def layout(self, size, player):
         self._size = size
         W, H = size
         self.buttons = []
-        # right-hand part grid
+        # multicellular organisms see the whole catalog; cells see cell parts
+        part_ids = (P.PART_ORDER if player.stage == "multi"
+                    else P.CELL_STAGE_PARTS)
+        cols = 3 if len(part_ids) > 10 else 2
         col_x = int(W * 0.52)
         grid_w = W - col_x - 40
-        bw = (grid_w - 20) // 2
+        gap = 14
+        bw = (grid_w - gap * (cols - 1)) // cols
         bh = 62
         x0 = col_x
         y0 = 120
-        for i, pid in enumerate(P.PART_ORDER):
-            r = i // 2
-            c = i % 2
-            rect = pygame.Rect(x0 + c * (bw + 20), y0 + r * (bh + 12), bw, bh)
+        for i, pid in enumerate(part_ids):
+            r = i // cols
+            c = i % cols
+            rect = pygame.Rect(x0 + c * (bw + gap), y0 + r * (bh + 12), bw, bh)
             self.buttons.append((rect, pid))
         # grow + done buttons along the bottom
         self.grow_rect = pygame.Rect(x0, H - 120, grid_w // 2 - 10, 54)
@@ -79,7 +83,7 @@ class Editor:
                 if not player.grow():
                     self.message = "Not enough DNA to grow."
                 else:
-                    self.layout(self._size)
+                    self.layout(self._size, player)
                     self.message = f"Grew to evolution level {player.growth_level}!"
                 return None
             if self.done_rect and self.done_rect.collidepoint(mp):
@@ -112,7 +116,7 @@ class Editor:
     # -------------------------------------------------------------- drawing
     def draw(self, surface, player, t):
         if self._size != surface.get_size():
-            self.layout(surface.get_size())
+            self.layout(surface.get_size(), player)
         W, H = surface.get_size()
         overlay = pygame.Surface((W, H), pygame.SRCALPHA)
         overlay.fill((4, 10, 20, 235))
@@ -120,38 +124,56 @@ class Editor:
 
         hud = self.hud
         # title
-        surface.blit(hud.font_l.render("EVOLUTION EDITOR", True, C.C_MULTI), (40, 30))
+        stage_name = ("MULTICELLULAR" if player.stage == "multi" else "CELL")
+        surface.blit(hud.font_l.render(f"EVOLUTION EDITOR - {stage_name} STAGE",
+                                       True, C.C_MULTI), (40, 30))
         surface.blit(hud.font_m.render(
             f"DNA: {int(player.dna)}    Slots: {player.slots_used()}/{player.max_slots}"
-            f"    Level: {player.growth_level}/{C.MULTICELLULAR_LEVEL}    Diet: {player.diet}",
+            f"    Level: {player.growth_level}/{C.STAGE_MAX_LEVEL}    Diet: {player.diet}"
+            + (f"    Segments: {player.n_segments()}" if player.stage == "multi" else ""),
             True, C.C_TEXT), (40, 76))
 
-        # preview panel (left)
+        # preview panel (left) - frame the whole organism, segments included
         pv_rect = pygame.Rect(40, 120, int(W * 0.52) - 80, H - 260)
         pygame.draw.rect(surface, (10, 22, 38), pv_rect, border_radius=8)
         pygame.draw.rect(surface, C.C_PANEL_LINE, pv_rect, 1, border_radius=8)
-        zoom = min(pv_rect.w, pv_rect.h) * 0.32 / max(player.radius, 8)
-        cam = _PreviewCam(pv_rect.center, player.pos, zoom)
+        pts = [player.pos] + [pygame.Vector2(sp) for sp in player.seg_pos]
+        cx = sum(p.x for p in pts) / len(pts)
+        cy = sum(p.y for p in pts) / len(pts)
+        span = max((pygame.Vector2(cx, cy) - p).length() for p in pts) + player.radius * 2
+        zoom = min(pv_rect.w, pv_rect.h) * 0.42 / max(span, 8)
+        cam = _PreviewCam(pv_rect.center, (cx, cy), zoom)
         player.draw(surface, cam, t)
 
-        # attached-part chips (removable) along the bottom of the preview
+        # attached-part chips (removable) along the bottom of the preview.
+        # Lay them out first so we know how many rows they need, then draw
+        # top-down with the caption above them.
         self.chip_rects = []
-        cx, cy = pv_rect.left + 12, pv_rect.bottom - 34
-        for idx, ap in enumerate(player.parts):
-            name = P.PART_DEFS[ap.id].name
-            label = hud.font_s.render(f"x {name}", True, C.C_TEXT)
+        labels = [hud.font_s.render(f"x {P.PART_DEFS[ap.id].name}", True, C.C_TEXT)
+                  for ap in player.parts]
+        rows, row = [], []
+        cx = pv_rect.left + 12
+        for idx, label in enumerate(labels):
             cw = label.get_width() + 14
-            if cx + cw > pv_rect.right - 12:
+            if row and cx + cw > pv_rect.right - 12:
+                rows.append(row)
+                row = []
                 cx = pv_rect.left + 12
-                cy -= 26
-            chip = pygame.Rect(cx, cy, cw, 22)
-            pygame.draw.rect(surface, (40, 30, 40), chip, border_radius=4)
-            pygame.draw.rect(surface, (120, 80, 80), chip, 1, border_radius=4)
-            surface.blit(label, (cx + 7, cy + 3))
-            self.chip_rects.append((chip, idx))
+            row.append((idx, label, cx, cw))
             cx += cw + 8
+        if row:
+            rows.append(row)
+        cy = pv_rect.bottom - 12 - len(rows) * 26
         surface.blit(hud.font_s.render("(click a part to remove & refund)", True,
-                                       C.C_TEXT_DIM), (pv_rect.left + 12, pv_rect.bottom - 60))
+                                       C.C_TEXT_DIM), (pv_rect.left + 12, cy - 22))
+        for r in rows:
+            for idx, label, cx, cw in r:
+                chip = pygame.Rect(cx, cy, cw, 22)
+                pygame.draw.rect(surface, (40, 30, 40), chip, border_radius=4)
+                pygame.draw.rect(surface, (120, 80, 80), chip, 1, border_radius=4)
+                surface.blit(label, (cx + 7, cy + 3))
+                self.chip_rects.append((chip, idx))
+            cy += 26
 
         # part buttons (right)
         mouse = pygame.mouse.get_pos()
@@ -184,9 +206,14 @@ class Editor:
             gcol = (36, 84, 62)
         pygame.draw.rect(surface, gcol, self.grow_rect, border_radius=6)
         pygame.draw.rect(surface, C.C_PANEL_LINE, self.grow_rect, 1, border_radius=6)
-        gtxt = (f"GROW  ({int(player.grow_cost())} DNA)" if player.growth_level < C.MULTICELLULAR_LEVEL
-                else "MULTICELLULAR!")
-        gs = hud.font_m.render(gtxt, True, C.C_MULTI if can_grow else C.C_TEXT_DIM)
+        if player.growth_level < C.STAGE_MAX_LEVEL:
+            gtxt = f"GROW  ({int(player.grow_cost())} DNA)"
+        else:
+            gtxt = "STAGE COMPLETE"
+        font = hud.font_m
+        if font.size(gtxt)[0] > self.grow_rect.w - 16:
+            font = hud.font_s
+        gs = font.render(gtxt, True, C.C_MULTI if can_grow else C.C_TEXT_DIM)
         surface.blit(gs, (self.grow_rect.centerx - gs.get_width() // 2,
                           self.grow_rect.centery - gs.get_height() // 2))
 

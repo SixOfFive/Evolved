@@ -18,6 +18,7 @@ STATE_EDITOR = "editor"
 STATE_PAUSED = "paused"
 STATE_GAMEOVER = "gameover"
 STATE_WIN = "win"
+STATE_PROMPT = "prompt"   # modal yes/no question (stage advancement)
 
 
 class Mate:
@@ -87,6 +88,11 @@ class Game:
         self.mate = None
         self.show_overlay = True
         self.running = True
+        # stage-advancement prompt bookkeeping
+        self.prompt = None            # {"title","sub","yes","no"} when asking
+        self._prompt_rects = None     # (yes_rect, no_rect) from the last draw
+        self.advance_declined = False # player said "not yet" to multicellular
+        self.brain_declined = False   # player said "not yet" to the brain
 
     # ------------------------------------------------------------- lifecycle
     def _new_world(self):
@@ -94,6 +100,9 @@ class Game:
         self.controller = PlayerController(self.world.player)
         self.camera.snap(self.world.player.pos, self.world.player.radius)
         self.mate = None
+        self.prompt = None
+        self.advance_declined = False
+        self.brain_declined = False
         self.state = STATE_PLAYING
 
     def run(self):
@@ -130,6 +139,8 @@ class Game:
                 result = self.editor.handle_event(event, self.world.player)
                 if result == "close":
                     self._close_editor()
+            elif self.state == STATE_PROMPT:
+                self._handle_prompt_event(event)
             elif event.type == pygame.KEYDOWN:
                 self._on_keydown(event)
 
@@ -150,6 +161,13 @@ class Game:
                 self._open_editor()          # shortcut: skip the swim
             elif self.world.player.alive:
                 self._call_mate()
+        elif event.key == pygame.K_m and self.state == STATE_PLAYING:
+            # re-offer stage advancement any time the player is eligible
+            p = self.world.player
+            if p.can_advance_stage():
+                self._offer_advance()
+            elif p.can_evolve_brain():
+                self._offer_brain()
 
     def _call_mate(self):
         p = self.world.player
@@ -171,7 +189,81 @@ class Game:
         p.generation += 1
         p.energy = p.max_energy
         p.health = min(p.max_health, p.health + p.max_health * 0.25)
-        self.state = STATE_WIN if p.multicellular else STATE_PLAYING
+        # a full stage bar puts the next stage on offer (once, unless declined)
+        if p.can_advance_stage() and not self.advance_declined:
+            self._offer_advance()
+        elif p.can_evolve_brain() and not self.brain_declined:
+            self._offer_brain()
+        else:
+            self.state = STATE_PLAYING
+
+    # -------------------------------------------------- stage advancement
+    def _offer_advance(self):
+        self.prompt = {
+            "title": "BECOME MULTICELLULAR?",
+            "sub": ("Your cell has filled its evolution bar. Advance to the "
+                    "multicellular stage - body segments, muscles, stingers, "
+                    "armor and more? You can stay single-celled and keep "
+                    "playing if you prefer (press M later to advance)."),
+            "yes": self._do_advance,
+            "no": self._decline_advance,
+        }
+        self.state = STATE_PROMPT
+
+    def _do_advance(self):
+        p = self.world.player
+        p.advance_stage()
+        self.world.log("You are now a MULTICELLULAR organism! New parts await "
+                       "in the editor.", C.C_MULTI)
+        self.prompt = None
+        self.state = STATE_PLAYING
+
+    def _decline_advance(self):
+        self.advance_declined = True
+        self.world.log("You remain single-celled. Press M when ready to "
+                       "advance.", C.C_TEXT_DIM)
+        self.prompt = None
+        self.state = STATE_PLAYING
+
+    def _offer_brain(self):
+        self.prompt = {
+            "title": "EVOLVE A BRAIN?",
+            "sub": ("Your organism has mastered the multicellular stage. "
+                    "Evolving a brain completes your aquatic journey. You can "
+                    "also keep swimming and say yes later (press M)."),
+            "yes": self._do_brain,
+            "no": self._decline_brain,
+        }
+        self.state = STATE_PROMPT
+
+    def _do_brain(self):
+        self.world.player.brain_evolved = True
+        self.prompt = None
+        self.state = STATE_WIN
+
+    def _decline_brain(self):
+        self.brain_declined = True
+        self.world.log("You keep swimming. Press M when ready to evolve a "
+                       "brain.", C.C_TEXT_DIM)
+        self.prompt = None
+        self.state = STATE_PLAYING
+
+    def _handle_prompt_event(self, event):
+        if self.prompt is None:
+            self.state = STATE_PLAYING
+            return
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_y, pygame.K_RETURN):
+                self.prompt["yes"]()
+            elif event.key in (pygame.K_n, pygame.K_ESCAPE):
+                self.prompt["no"]()
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._prompt_rects:
+                yes_rect, no_rect = self._prompt_rects
+                if yes_rect.collidepoint(event.pos):
+                    self.prompt["yes"]()
+                elif no_rect.collidepoint(event.pos):
+                    self.prompt["no"]()
 
     # -------------------------------------------------------------- update
     def _update(self, dt):
@@ -195,8 +287,10 @@ class Game:
 
         if self.world.player_dead:
             self.state = STATE_GAMEOVER
-        elif self.world.player.multicellular:
-            self.state = STATE_WIN
+        elif (self.world.player.can_advance_stage()
+                and not self.advance_declined and self.mate is None):
+            # first time the bar fills mid-swim, offer the next stage
+            self._offer_advance()
 
     # ---------------------------------------------------------------- draw
     def _draw(self):
@@ -212,6 +306,8 @@ class Game:
 
         if self.state == STATE_EDITOR:
             self.editor.draw(s, self.world.player, self.t)
+        elif self.state == STATE_PROMPT and self.prompt is not None:
+            self._draw_prompt(s)
         elif self.state == STATE_PAUSED:
             self._overlay_text(s, "PAUSED", "Esc to resume")
         elif self.state == STATE_GAMEOVER:
@@ -223,10 +319,57 @@ class Game:
                 color=C.C_BAD)
         elif self.state == STATE_WIN:
             self._overlay_text(
-                s, "MULTICELLULAR!",
-                "Your cell evolved into a multicellular organism.   "
-                "R: keep playing   Esc: quit",
+                s, "YOU EVOLVED A BRAIN!",
+                "Your organism conquered the primordial ocean. The land awaits... "
+                "TO BE CONTINUED.   R: new game   Esc: quit",
                 color=C.C_MULTI)
+
+    def _draw_prompt(self, surface):
+        W, H = surface.get_size()
+        overlay = pygame.Surface((W, H), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 170))
+        surface.blit(overlay, (0, 0))
+
+        pw, ph = min(760, W - 80), 260
+        px, py = (W - pw) // 2, (H - ph) // 2
+        pygame.draw.rect(surface, C.C_PANEL, (px, py, pw, ph), border_radius=10)
+        pygame.draw.rect(surface, C.C_MULTI, (px, py, pw, ph), 2, border_radius=10)
+
+        title = self.hud.font_l.render(self.prompt["title"], True, C.C_MULTI)
+        surface.blit(title, (px + (pw - title.get_width()) // 2, py + 22))
+
+        # word-wrap the subtitle
+        words = self.prompt["sub"].split()
+        lines, cur = [], ""
+        for w in words:
+            trial = (cur + " " + w).strip()
+            if self.hud.font_m.size(trial)[0] > pw - 60:
+                lines.append(cur)
+                cur = w
+            else:
+                cur = trial
+        if cur:
+            lines.append(cur)
+        ty = py + 74
+        for line in lines[:5]:
+            ls = self.hud.font_m.render(line, True, C.C_TEXT)
+            surface.blit(ls, (px + 30, ty))
+            ty += 26
+
+        bw, bh = 190, 52
+        gap = 40
+        yes_rect = pygame.Rect(px + pw // 2 - bw - gap // 2, py + ph - bh - 22, bw, bh)
+        no_rect = pygame.Rect(px + pw // 2 + gap // 2, py + ph - bh - 22, bw, bh)
+        mouse = pygame.mouse.get_pos()
+        for rect, label, col in ((yes_rect, "YES  (Y)", (26, 66, 48)),
+                                 (no_rect, "NOT YET  (N)", (60, 40, 34))):
+            bg = tuple(min(255, c + 18) for c in col) if rect.collidepoint(mouse) else col
+            pygame.draw.rect(surface, bg, rect, border_radius=8)
+            pygame.draw.rect(surface, C.C_PANEL_LINE, rect, 1, border_radius=8)
+            ls = self.hud.font_m.render(label, True, C.C_TEXT)
+            surface.blit(ls, (rect.centerx - ls.get_width() // 2,
+                              rect.centery - ls.get_height() // 2))
+        self._prompt_rects = (yes_rect, no_rect)
 
     def _overlay_text(self, surface, title, subtitle, color=C.C_TEXT):
         W, H = surface.get_size()

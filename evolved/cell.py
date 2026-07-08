@@ -49,10 +49,14 @@ class Cell:
 
         self.parts = []            # list[AttachedPart]
         self.discovered = set()    # part ids unlocked via meteors / kills
-        self.growth_level = 0
+        self.growth_level = 0      # level within the CURRENT stage
         self.dna = 0.0
         self.generation = 1
-        self.multicellular = False
+        self.stage = "cell"        # "cell" -> "multi"
+        self.brain_evolved = False  # end of the multicellular stage
+        # multicellular body: world-space positions/radii of trailing segments
+        self.seg_pos = []
+        self.seg_radius = []
 
         self.health = C.BASE_HEALTH
         self.max_health = C.BASE_HEALTH
@@ -60,6 +64,7 @@ class Cell:
         self.max_energy = C.BASE_ENERGY
 
         self.alive = True
+        self.swallowed = False     # eaten whole -> leaves no meat behind
         self.time_alive = 0.0
         self.diet_meter = 0.0      # +1 herbivore .. -1 carnivore
         self.food_eaten = 0
@@ -80,6 +85,9 @@ class Cell:
         self.can_eat_meat = False
         self.can_bite_cells = False
         self.n_spike = 0
+        self.n_sting = 0
+        self.armor_mult = 1.0      # incoming damage multiplier (<=1)
+        self.photo_rate = 0.0      # passive energy/s from photosynthesis
         self.has_poison = False
         self.has_electric = False
         self.detect_range = 360.0
@@ -101,16 +109,20 @@ class Cell:
         return len(self.parts)
 
     def available_parts(self):
-        """Part ids the cell is allowed to add right now (unlocked + free slot)."""
+        """Part ids the cell is allowed to add right now (stage + unlocks)."""
         out = []
         for pid in P.PART_ORDER:
             pdef = P.PART_DEFS[pid]
+            if pdef.stage == "multi" and self.stage != "multi":
+                continue
             if pdef.unlock_level <= self.growth_level or pid in self.discovered:
                 out.append(pid)
         return out
 
     def can_add(self, part_id, spend=True):
         pdef = P.PART_DEFS[part_id]
+        if pdef.stage == "multi" and self.stage != "multi":
+            return False
         if self.slots_used() >= self.max_slots:
             return False
         if spend and self.dna < pdef.cost:
@@ -152,24 +164,55 @@ class Cell:
 
     # -------------------------------------------------------------- evolution
     def grow_cost(self):
-        return C.BASE_GROW_COST * (self.growth_level + 1)
+        base = C.MULTI_GROW_COST if self.stage == "multi" else C.BASE_GROW_COST
+        return base * (self.growth_level + 1)
 
     def can_grow(self):
         return (self.dna >= self.grow_cost()
                 and self.radius < C.MAX_RADIUS
-                and self.growth_level < C.MULTICELLULAR_LEVEL)
+                and self.growth_level < C.STAGE_MAX_LEVEL)
 
     def grow(self):
         if not self.can_grow():
             return False
         self.dna -= self.grow_cost()
         self.growth_level += 1
-        self.radius = min(C.MAX_RADIUS, self.radius * C.GROW_RADIUS_MULT)
+        mult = (C.MULTI_GROW_RADIUS_MULT if self.stage == "multi"
+                else C.GROW_RADIUS_MULT)
+        self.radius = min(C.MAX_RADIUS, self.radius * mult)
         self.recompute()
         self.health = self.max_health  # a growth spurt restores you
-        if self.growth_level >= C.MULTICELLULAR_LEVEL:
-            self.multicellular = True
         return True
+
+    def stage_complete(self):
+        """This stage's evolution bar is full - the next stage is on offer."""
+        return self.growth_level >= C.STAGE_MAX_LEVEL
+
+    def can_advance_stage(self):
+        return self.stage == "cell" and self.stage_complete()
+
+    def can_evolve_brain(self):
+        return (self.stage == "multi" and self.stage_complete()
+                and not self.brain_evolved)
+
+    def advance_stage(self):
+        """Become multicellular: reset the level bar, sprout body segments."""
+        if not self.can_advance_stage():
+            return False
+        self.stage = "multi"
+        self.growth_level = 0
+        # everything from the cell stage stays unlocked forever
+        self.discovered.update(P.CELL_STAGE_PARTS)
+        self.radius = min(C.MAX_RADIUS, self.radius * 1.15)
+        self.recompute()
+        self.health = self.max_health
+        self.energy = self.max_energy
+        return True
+
+    def n_segments(self):
+        if self.stage != "multi":
+            return 0
+        return 2 + self.part_counts().get("segment", 0)
 
     def recompute(self):
         counts = self.part_counts()
@@ -179,6 +222,15 @@ class Cell:
         n_eye = counts.get("eye", 0)
         self.has_poison = counts.get("poison", 0) > 0
         self.has_electric = counts.get("electric", 0) > 0
+
+        # multicellular tissue
+        n_muscle = counts.get("muscle", 0)
+        n_sensor = counts.get("sensor", 0)
+        n_armor = counts.get("armor", 0)
+        self.n_sting = counts.get("stinger", 0)
+        self.photo_rate = counts.get("photo_cell", 0) * C.PHOTO_ENERGY
+        self.armor_mult = max(C.ARMOR_REDUCE_FLOOR,
+                              (1.0 - C.ARMOR_REDUCE) ** n_armor)
 
         has_filter = counts.get("filter_mouth", 0) > 0
         has_jaw = counts.get("jaw", 0) > 0
@@ -196,18 +248,33 @@ class Cell:
         else:
             self.diet = "none"
 
-        self.speed = C.BASE_SPEED + n_flag * C.FLAGELLUM_SPEED
-        self.turn_rate = C.BASE_TURN + n_cil * C.CILIA_TURN
-        self.detect_range = 360.0 + n_eye * 150.0
-        self.max_slots = C.BASE_SLOTS + self.growth_level * C.SLOTS_PER_LEVEL
+        self.speed = (C.BASE_SPEED + n_flag * C.FLAGELLUM_SPEED
+                      + n_muscle * C.MUSCLE_SPEED)
+        self.turn_rate = (C.BASE_TURN + n_cil * C.CILIA_TURN
+                          + n_muscle * C.MUSCLE_TURN)
+        self.detect_range = 360.0 + n_eye * 150.0 + n_sensor * C.SENSOR_RANGE
+        segs = self.n_segments()
+        self.max_slots = (C.BASE_SLOTS + self.growth_level * C.SLOTS_PER_LEVEL
+                          + segs * C.SEGMENT_SLOTS)
 
-        new_max = C.BASE_HEALTH + (self.radius - C.START_RADIUS) * C.HEALTH_PER_RADIUS
+        new_max = (C.BASE_HEALTH
+                   + (self.radius - C.START_RADIUS) * C.HEALTH_PER_RADIUS
+                   + segs * C.SEGMENT_HP)
         if new_max > self.max_health:
             # keep same fraction of health when max grows
             frac = self.health / self.max_health if self.max_health else 1.0
             self.health = new_max * frac
         self.max_health = new_max
         self.health = min(self.health, self.max_health)
+
+        # (re)build the segment chain if its length changed
+        if segs != len(self.seg_pos):
+            back = -self.facing()
+            self.seg_pos = [pygame.Vector2(self.pos)
+                            + back * self.radius * C.SEGMENT_SPACING * (i + 1)
+                            for i in range(segs)]
+        self.seg_radius = [max(4.0, self.radius * (0.85 - 0.08 * i))
+                           for i in range(segs)]
 
     # ---------------------------------------------------------------- feeding
     def feed(self, dna, energy, kind):
@@ -225,6 +292,7 @@ class Cell:
     def take_damage(self, amount, source=None):
         if amount <= 0 or not self.alive:
             return
+        amount *= self.armor_mult
         self.health -= amount
         self.hurt_flash = 0.25
         if self.health <= 0:
@@ -295,9 +363,28 @@ class Cell:
             self.pos.y = C.WORLD_H - margin
             self.vel.y = -abs(self.vel.y) * 0.4
 
-        # --- metabolism ---
-        drain = C.ENERGY_DRAIN + C.ENERGY_MOVE_DRAIN * thrust_mag
-        self.energy = max(0.0, self.energy - drain * dt)
+        # --- body segments trail the head, follow-the-leader style ---
+        if self.seg_pos:
+            leader_pos = self.pos
+            leader_r = self.radius
+            for i, sp in enumerate(self.seg_pos):
+                spacing = (leader_r + self.seg_radius[i]) * C.SEGMENT_SPACING
+                d = sp - leader_pos
+                dist = d.length()
+                if dist > 1e-6:
+                    sp += d * ((spacing - dist) / dist) * min(1.0, 14 * dt)
+                else:
+                    sp += pygame.Vector2(-spacing, 0)
+                self.seg_pos[i] = sp
+                leader_pos = sp
+                leader_r = self.seg_radius[i]
+
+        # --- metabolism (photosynthetic tissue offsets the drain) ---
+        drain = C.ENERGY_DRAIN + C.ENERGY_MOVE_DRAIN * thrust_mag - self.photo_rate
+        if drain >= 0:
+            self.energy = max(0.0, self.energy - drain * dt)
+        else:
+            self.energy = min(self.max_energy, self.energy - drain * dt)
         if self.energy > C.WELL_FED_ENERGY and self.health < self.max_health:
             self.health = min(self.max_health, self.health + C.HEALTH_REGEN * dt)
         if self.energy <= 0:
@@ -322,6 +409,10 @@ class Cell:
             return
         sx, sy = cam.world_to_screen(self.pos)
         r = self.radius * cam.zoom
+
+        # multicellular body segments, tail-first so they stack toward the head
+        if self.seg_pos:
+            self._draw_segments(surface, cam, t)
 
         # parts drawn behind the body first (flagella, tails)
         for ap in self.parts:
@@ -369,6 +460,8 @@ class Cell:
                 self._draw_eye(surface, sx, sy, r, ap)
             elif ap.id == "electric":
                 self._draw_electric_node(surface, sx, sy, r, ap, t)
+            elif ap.id == "sensor":
+                self._draw_sensor(surface, sx, sy, r, ap, t)
 
         if self.is_player:
             # a bright ring so the player is always identifiable
@@ -378,6 +471,81 @@ class Cell:
     # ---- part renderers ----
     def _p(self, sx, sy, r, world_angle, dist):
         return (sx + math.cos(world_angle) * dist, sy + math.sin(world_angle) * dist)
+
+    def _draw_segments(self, surface, cam, t):
+        counts = self.part_counts()
+        n_muscle = counts.get("muscle", 0)
+        n_armor = counts.get("armor", 0)
+        n_photo = counts.get("photo_cell", 0)
+        n_seg = len(self.seg_pos)
+        for i in range(n_seg - 1, -1, -1):
+            sp = self.seg_pos[i]
+            if not cam.is_visible(sp, self.seg_radius[i] + 20):
+                continue
+            ssx, ssy = cam.world_to_screen(sp)
+            sr = self.seg_radius[i] * cam.zoom
+            body = self.color
+            if self.hurt_flash > 0:
+                body = (255, 180, 170)
+            # photosynthetic segments show green tissue
+            if n_photo > 0 and i < n_photo:
+                body = tuple(min(255, int(c * 0.55 + g * 0.45))
+                             for c, g in zip(body, (110, 220, 130)))
+            # direction of travel of this segment (toward its leader)
+            lead = self.seg_pos[i - 1] if i > 0 else self.pos
+            d = pygame.Vector2(lead) - sp
+            seg_ang = math.atan2(d.y, d.x) if d.length_squared() > 1e-6 else self.angle
+
+            pygame.draw.circle(surface, self._shade(body, 0.55), (ssx, ssy),
+                               max(2, int(sr + 2)))
+            pygame.draw.circle(surface, body, (ssx, ssy), max(1, int(sr)))
+            pygame.draw.circle(surface, self._shade(body, 1.3), (ssx, ssy),
+                               max(1, int(sr)), max(1, int(2 * cam.zoom)))
+            pygame.draw.circle(surface, self._shade(body, 0.6), (ssx, ssy),
+                               max(1, int(sr * 0.35)))
+
+            # muscle cells render as paired fins on the front segments
+            if i < n_muscle:
+                for side in (1, -1):
+                    fa = seg_ang + side * (math.pi / 2)
+                    flap = math.sin(t * 8 + i) * 0.35
+                    tip = (ssx + math.cos(fa + flap) * sr * 1.7,
+                           ssy + math.sin(fa + flap) * sr * 1.7)
+                    b1 = (ssx + math.cos(seg_ang) * sr * 0.5,
+                          ssy + math.sin(seg_ang) * sr * 0.5)
+                    b2 = (ssx - math.cos(seg_ang) * sr * 0.5,
+                          ssy - math.sin(seg_ang) * sr * 0.5)
+                    pygame.draw.polygon(surface, self._shade(self.color, 1.25),
+                                        [tip, b1, b2])
+            # armor plates render as thick arcs on the back segments
+            if n_armor > 0 and i >= n_seg - n_armor:
+                rect = pygame.Rect(0, 0, int(sr * 2.6), int(sr * 2.6))
+                rect.center = (ssx, ssy)
+                pygame.draw.arc(surface, (200, 200, 190), rect,
+                                seg_ang + 2.2, seg_ang - 2.2 + math.tau,
+                                max(2, int(3 * cam.zoom)))
+
+        # stingers: wavy tentacles trailing off the tail segment
+        if self.n_sting > 0 and self.seg_pos:
+            tail = self.seg_pos[-1]
+            tsx, tsy = cam.world_to_screen(tail)
+            tr = self.seg_radius[-1] * cam.zoom
+            lead = self.seg_pos[-2] if len(self.seg_pos) > 1 else self.pos
+            back = pygame.Vector2(tail) - pygame.Vector2(lead)
+            back_ang = (math.atan2(back.y, back.x)
+                        if back.length_squared() > 1e-6 else self.angle + math.pi)
+            for k in range(self.n_sting):
+                spread = (k - (self.n_sting - 1) / 2) * 0.35
+                a = back_ang + spread
+                pts = [(tsx, tsy)]
+                for s in range(1, 7):
+                    f = s / 6
+                    wig = math.sin(t * 6 + k * 2 + f * 4) * tr * 0.5 * f
+                    perp = a + math.pi / 2
+                    pts.append((tsx + math.cos(a) * tr * 2.6 * f + math.cos(perp) * wig,
+                                tsy + math.sin(a) * tr * 2.6 * f + math.sin(perp) * wig))
+                pygame.draw.lines(surface, (235, 150, 200), False, pts,
+                                  max(1, int(2 * cam.zoom)))
 
     def _draw_flagellum(self, surface, sx, sy, r, ap, t):
         wa = self.angle + ap.angle
@@ -452,6 +620,18 @@ class Cell:
         pygame.draw.circle(surface, (20, 20, 30),
                            (int(cx + look.x * er * 0.35), int(cy + look.y * er * 0.35)),
                            max(1, int(er * 0.5)))
+
+    def _draw_sensor(self, surface, sx, sy, r, ap, t):
+        # a short antenna with a glowing bulb
+        wa = self.angle + ap.angle
+        base = self._p(sx, sy, r, wa, r * 0.95)
+        tip = self._p(sx, sy, r, wa + 0.12 * math.sin(t * 5 + ap.phase), r * 1.45)
+        pygame.draw.line(surface, self._shade(self.color, 1.25), base, tip,
+                         max(1, int(1.5)))
+        glow = 0.65 + 0.35 * math.sin(t * 7 + ap.phase)
+        col = (int(160 + 80 * glow), int(200 + 40 * glow), 255)
+        pygame.draw.circle(surface, col, (int(tip[0]), int(tip[1])),
+                           max(2, int(r * 0.14)))
 
     def _draw_electric_node(self, surface, sx, sy, r, ap, t):
         wa = self.angle + ap.angle

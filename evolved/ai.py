@@ -22,21 +22,37 @@ from . import parts as P
 GOALS = ("forage", "hunt", "flee", "wander")
 
 _SYSTEM_PROMPT = (
-    "You are the brain of a single-celled microbe competing to survive and "
-    "evolve in a 2D primordial ocean - the cell stage of Spore. You control ONE "
-    "cell. Your aims: eat, avoid being eaten, gather DNA, evolve new organelles, "
-    "and GROW until you become multicellular. "
+    "You are the brain of a microbe competing to survive and evolve in a 2D "
+    "primordial ocean - like the water stages of Spore. You control ONE "
+    "organism. Your aims: eat, avoid being eaten, gather DNA, evolve new "
+    "parts, GROW to fill each stage's bar, and advance from single cell to a "
+    "multicellular organism with a brain. "
     "Reply with ONLY compact JSON, no prose, of the form: "
     '{"goal":"forage|hunt|flee|wander","diet":"herbivore|carnivore|omnivore",'
     '"evolve":["part_id",...],"grow":true|false,"reason":"few words"}. '
-    "Only choose evolve parts from allowed_parts. Herbivores eat plants and must "
-    "flee or defend; carnivores hunt smaller cells and eat meat; omnivores do "
-    "both. Flee when threats are bigger than you. Be decisive and keep growing."
+    "Only choose evolve parts from allowed_parts. Herbivores eat plants/algae "
+    "and must flee or defend; carnivores hunt smaller organisms and eat meat; "
+    "omnivores do both. In the multicellular stage prefer body segments, "
+    "muscles, stingers, armor and sensors. Flee when threats are bigger than "
+    "you. Be decisive and keep growing."
+)
+
+_SPAWN_PROMPT = (
+    "You are a newly spawned single-celled microbe in a 2D primordial ocean "
+    "(the cell stage of Spore). Decide your survival strategy for this life: "
+    "will you HUNT other cells (carnivore), HARVEST plants (herbivore), or do "
+    "BOTH (omnivore)? Consider the food and threats around you. Reply with "
+    'ONLY compact JSON: {"strategy":"hunt|harvest|both","reason":"few words"}.'
 )
 
 # default evolution priority when the LLM has no opinion
 _DEFAULT_PRIORITY = ["flagellum", "spike", "cilia", "eye", "poison",
                      "proboscis", "electric"]
+_MULTI_PRIORITY = ["segment", "muscle", "stinger", "armor", "sensor",
+                   "photo_cell", "electric"]
+
+_STRATEGY_TO_DIET = {"hunt": "carnivore", "harvest": "herbivore",
+                     "both": "omnivore"}
 
 
 class AIBrain:
@@ -50,11 +66,38 @@ class AIBrain:
         self.wishlist = []          # part ids the LLM wants next
         self.want_grow = False
         self.reason = ""
+        # spawn-time strategy choice (hunt/harvest/both) made by the LLM
+        self.awaiting_spawn_choice = False
+        self._spawn_choice_timer = 0.0
         # stagger timers so brains don't all fire at once
         self._llm_timer = random.uniform(0.5, C.LLM_POLICY_INTERVAL)
         self._evolve_timer = random.uniform(1.0, 3.0)
         self._wander_angle = random.uniform(0, math.tau)
         self._target = None
+
+    # ---------------------------------------------------------- spawn choice
+    def begin_spawn_choice(self):
+        """Ask the LLM whether this new cell will hunt, harvest, or both."""
+        self.awaiting_spawn_choice = True
+        self._spawn_choice_timer = 8.0   # heuristic fallback deadline
+        state = self._snapshot()
+        if not self.manager.request(self.cell.id, _SPAWN_PROMPT,
+                                    json.dumps(state)):
+            self.equip_starting_mouth()
+
+    def equip_starting_mouth(self):
+        """Equip the free starting mouth for the intended diet."""
+        self.awaiting_spawn_choice = False
+        cell = self.cell
+        if cell.diet != "none":
+            return
+        if self.intended_diet == "carnivore":
+            cell.add_part("jaw", spend=False)
+        elif self.intended_diet == "omnivore":
+            cell.add_part("jaw", spend=False)
+            cell.add_part("filter_mouth", spend=False)
+        else:
+            cell.add_part("filter_mouth", spend=False)
 
     # ------------------------------------------------------------- perception
     def _nearest_cell(self, predicate, max_dist):
@@ -93,14 +136,31 @@ class AIBrain:
         cell = self.cell
         return self._nearest_cell(
             lambda o: o.radius >= cell.radius * 1.15
-            and (o.can_bite_cells or o.n_spike > 0),
+            and (o.can_bite_cells or o.n_spike > 0 or o.n_sting > 0),
             max_dist)
+
+    def _edible_kinds(self):
+        cell = self.cell
+        kinds = []
+        if cell.can_eat_plant:
+            kinds.append("plant")
+            if cell.radius >= C.ALGAE_MIN_EATER:
+                kinds.append("algae")
+        if cell.can_eat_meat:
+            kinds.append("meat")
+        return tuple(kinds)
 
     # ------------------------------------------------------------------ update
     def update(self, dt):
         cell = self.cell
         if not cell.alive:
             return
+
+        # waiting on the LLM's hunt/harvest/both call: fall back if it's slow
+        if self.awaiting_spawn_choice:
+            self._spawn_choice_timer -= dt
+            if self._spawn_choice_timer <= 0:
+                self.equip_starting_mouth()
 
         # periodic self-directed evolution (works with or without the LLM)
         self._evolve_timer -= dt
@@ -132,12 +192,8 @@ class AIBrain:
 
         # hunger: when energy runs low, drop everything and go eat
         if cell.energy < cell.max_energy * 0.35:
-            kinds = []
-            if cell.can_eat_plant:
-                kinds.append("plant")
-            if cell.can_eat_meat:
-                kinds.append("meat")
-            food = self._nearest_food(tuple(kinds), detect * 1.6) if kinds else None
+            kinds = self._edible_kinds()
+            food = self._nearest_food(kinds, detect * 1.6) if kinds else None
             if food is None and cell.can_bite_cells:
                 food = self._nearest_cell(lambda o: cell.tier_of(o) == "prey", detect)
             if food is not None:
@@ -156,13 +212,9 @@ class AIBrain:
             if target is None and cell.can_eat_meat:
                 target = self._nearest_food(("meat",), detect)
         elif goal == "forage" or target is None:
-            kinds = []
-            if cell.can_eat_plant:
-                kinds.append("plant")
-            if cell.can_eat_meat:
-                kinds.append("meat")
+            kinds = self._edible_kinds()
             if kinds:
-                target = self._nearest_food(tuple(kinds), detect)
+                target = self._nearest_food(kinds, detect)
             if target is None and cell.can_bite_cells:
                 target = self._nearest_cell(
                     lambda o: cell.tier_of(o) == "prey", detect)
@@ -208,6 +260,16 @@ class AIBrain:
     # -------------------------------------------------------------- evolution
     def _auto_evolve(self):
         cell = self.cell
+        if self.awaiting_spawn_choice:
+            return  # no strategy yet - wait for the LLM (or the fallback)
+
+        # 0) stage advancement: rivals push on to multicellular when ready
+        if cell.can_advance_stage():
+            cell.advance_stage()
+            self.world.log(f"{cell.name} evolved into a multicellular organism!",
+                           (200, 160, 255))
+            return
+
         # 1) ensure a mouth matching the intended diet
         if cell.diet == "none":
             self._buy_mouth_for(self.intended_diet)
@@ -234,8 +296,9 @@ class AIBrain:
             if self._try_buy("spike"):
                 return
 
-        # 4) spend from the LLM wishlist, then defaults
-        for pid in list(self.wishlist) + _DEFAULT_PRIORITY:
+        # 4) spend from the LLM wishlist, then stage-appropriate defaults
+        defaults = _MULTI_PRIORITY if cell.stage == "multi" else _DEFAULT_PRIORITY
+        for pid in list(self.wishlist) + defaults:
             if pid in cell.available_parts() and self._try_buy(pid):
                 break
 
@@ -300,9 +363,11 @@ class AIBrain:
 
         return {
             "me": {
+                "stage": cell.stage,
                 "diet": cell.diet,
                 "intended_diet": self.intended_diet,
                 "growth_level": cell.growth_level,
+                "body_segments": cell.n_segments(),
                 "radius": round(cell.radius, 1),
                 "health_pct": round(100 * cell.health / cell.max_health),
                 "energy_pct": round(100 * cell.energy / cell.max_energy),
@@ -317,13 +382,30 @@ class AIBrain:
             "plants_near": plants,
             "meat_near": meats,
             "meteors_near": meteors,
-            "multicellular_at_level": C.MULTICELLULAR_LEVEL,
+            "stage_max_level": C.STAGE_MAX_LEVEL,
+            "next_stage": ("multicellular" if cell.stage == "cell"
+                           else "evolve a brain (final)"),
         }
 
     def apply_policy(self, policy):
         """Apply an LLM policy dict (called from the main thread)."""
         if not isinstance(policy, dict):
             return
+        # spawn-time strategy answer: hunt / harvest / both
+        strategy = policy.get("strategy")
+        if isinstance(strategy, str):
+            diet = _STRATEGY_TO_DIET.get(strategy.strip().lower())
+            if diet and self.awaiting_spawn_choice:
+                self.intended_diet = diet
+                self.equip_starting_mouth()
+                r = policy.get("reason")
+                if isinstance(r, str):
+                    self.reason = r[:40]
+                self.world.log(
+                    f"{self.cell.name} chose to "
+                    f"{ {'carnivore': 'hunt', 'herbivore': 'harvest', 'omnivore': 'hunt and harvest'}[diet] }.",
+                    self.cell.color)
+                return
         goal = policy.get("goal")
         if goal in GOALS:
             self.goal = goal

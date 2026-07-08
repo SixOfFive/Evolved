@@ -49,6 +49,8 @@ class World:
         # --- food & meteors ---
         for _ in range(C.PLANT_COUNT):
             self.foods.append(Food(self._rand_pos(), "plant"))
+        for _ in range(C.ALGAE_COUNT):
+            self.foods.append(Food(self._rand_pos(), "algae"))
         for _ in range(C.METEOR_COUNT):
             self.meteors.append(Meteor(self._rand_pos()))
 
@@ -74,15 +76,14 @@ class World:
         cell = Cell(self._far_spawn(), is_player=False, color=color, name=name)
         brain = AIBrain(cell, self, self.manager)
         cell.brain = brain
-        # starting kit for the intended diet
-        if brain.intended_diet == "carnivore":
-            cell.add_part("jaw", spend=False)
-        elif brain.intended_diet == "omnivore":
-            cell.add_part("jaw", spend=False)
-            cell.add_part("filter_mouth", spend=False)
-        else:
-            cell.add_part("filter_mouth", spend=False)
         cell.add_part("flagellum", spend=False)
+        # The LLM decides at spawn whether this rival will hunt, harvest, or
+        # both; the mouth is equipped when its answer arrives. Without the LLM
+        # the brain's random intent equips a mouth immediately.
+        if self.manager.enabled:
+            brain.begin_spawn_choice()
+        else:
+            brain.equip_starting_mouth()
         cell.energy = cell.max_energy
         self.cells.append(cell)
         return cell
@@ -145,15 +146,16 @@ class World:
             for f in self.foods:
                 if not f.alive:
                     continue
-                if f.kind == "plant" and not cell.can_eat_plant:
+                if f.kind in ("plant", "algae") and not cell.can_eat_plant:
+                    continue
+                if f.kind == "algae" and cell.radius < C.ALGAE_MIN_EATER:
                     continue
                 if f.kind == "meat" and not cell.can_eat_meat:
                     continue
                 if (f.pos - mouth).length() < reach + f.radius:
                     f.alive = False
-                    cell.feed(f.dna, f.energy, f.kind)
-                    if cell.is_player:
-                        pass
+                    cell.feed(f.dna, f.energy,
+                              "plant" if f.kind == "algae" else f.kind)
             # meteors (any cell can crack one)
             for m in self.meteors:
                 if not m.alive:
@@ -197,6 +199,19 @@ class World:
     def _bite(self, attacker, defender, dt):
         if not attacker.alive or not defender.alive:
             return
+        # much smaller prey is swallowed whole
+        if (attacker.can_bite_cells
+                and defender.radius <= attacker.radius * C.SWALLOW_RATIO):
+            defender.health = 0
+            defender.alive = False
+            defender.swallowed = True
+            attacker.kills += 1
+            attacker.feed(5.0 + defender.radius * 0.35, 30.0, "cell")
+            if attacker.is_player:
+                self.log(f"You swallowed {defender.name} whole!", C.C_GOOD)
+            elif defender.is_player:
+                self.log(f"{attacker.name} swallowed you whole!", C.C_BAD)
+            return
         dmg = 0.0
         # mouth bite: prey smaller than you
         if (attacker.can_bite_cells
@@ -208,6 +223,9 @@ class World:
         facing = attacker.spikes_facing(defender.pos)
         if facing:
             dmg += C.SPIKE_DMG * facing * dt
+        # stinger tentacles hurt on any contact, no facing needed
+        if attacker.n_sting:
+            dmg += C.STING_DMG * min(attacker.n_sting, 3) * dt
         if dmg > 0:
             defender.take_damage(dmg, attacker)
 
@@ -229,8 +247,9 @@ class World:
             if cell.alive:
                 survivors.append(cell)
                 continue
-            # death: burst into meat, hand a part to the last attacker unknown
-            self._spawn_meat(cell)
+            # death: burst into meat (unless swallowed whole)
+            if not cell.swallowed:
+                self._spawn_meat(cell)
             if cell.is_player:
                 self.player_dead = True
                 survivors.append(cell)  # keep for the game-over screen
@@ -251,6 +270,9 @@ class World:
         plants = sum(1 for f in self.foods if f.alive and f.kind == "plant")
         for _ in range(min(3, C.PLANT_COUNT - plants)):
             self.foods.append(Food(self._rand_pos(), "plant"))
+        algae = sum(1 for f in self.foods if f.alive and f.kind == "algae")
+        if algae < C.ALGAE_COUNT and random.random() < 0.05:
+            self.foods.append(Food(self._rand_pos(), "algae"))
         # drop the occasional meteor
         live_meteors = sum(1 for m in self.meteors if m.alive)
         if live_meteors < C.METEOR_COUNT and random.random() < 0.004:

@@ -20,13 +20,18 @@ class Food:
 
     def __init__(self, pos, kind):
         self.pos = pygame.Vector2(pos)
-        self.kind = kind  # 'plant' or 'meat'
+        self.kind = kind  # 'plant', 'meat' or 'algae'
         self.alive = True
         self.phase = random.uniform(0, math.tau)
         if kind == "plant":
             self.radius = C.PLANT_RADIUS * random.uniform(0.8, 1.25)
             self.dna = C.PLANT_DNA
             self.energy = C.PLANT_ENERGY
+            self.ttl = None
+        elif kind == "algae":
+            self.radius = C.ALGAE_RADIUS * random.uniform(0.85, 1.3)
+            self.dna = C.ALGAE_DNA
+            self.energy = C.ALGAE_ENERGY
             self.ttl = None
         else:  # meat
             self.radius = C.MEAT_RADIUS * random.uniform(0.8, 1.3)
@@ -46,6 +51,15 @@ class Food:
         sx, sy = cam.world_to_screen(self.pos)
         wob = 1.0 + 0.12 * math.sin(t * 3.0 + self.phase)
         r = max(2, self.radius * cam.zoom * wob)
+        if self.kind == "algae":
+            # a lumpy cluster of fronds
+            for i in range(5):
+                a = self.phase + i * math.tau / 5
+                lx = sx + math.cos(a) * r * 0.55
+                ly = sy + math.sin(a) * r * 0.55
+                pygame.draw.circle(surface, C.C_ALGAE, (lx, ly), max(2, r * 0.55))
+            pygame.draw.circle(surface, C.C_ALGAE_CORE, (sx, sy), max(2, r * 0.5))
+            return
         if self.kind == "plant":
             col, core = C.C_PLANT, C.C_PLANT_CORE
         else:

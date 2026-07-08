@@ -120,10 +120,11 @@ class HUD:
                 pygame.draw.rect(surface, (20, 20, 28), (x, y, w, 4))
                 frac = cell.health / cell.max_health
                 pygame.draw.rect(surface, C.C_HEALTH, (x, y, int(w * frac), 4))
-            # tiny diet tag
+            # tiny diet tag; multicellular rivals get a * badge
             tag = {"herbivore": "H", "carnivore": "C", "omnivore": "O",
                    "none": "-"}[cell.diet]
-            label = self.font_s.render(f"{cell.name} {tag}{cell.growth_level}",
+            star = "*" if cell.stage == "multi" else ""
+            label = self.font_s.render(f"{cell.name} {tag}{cell.growth_level}{star}",
                                        True, cell.color)
             surface.blit(label, (sx - label.get_width() / 2, sy - r - 30))
 
@@ -149,17 +150,26 @@ class HUD:
         self._bar(surface, x, y, 230, 20, min(1.0, p.dna / grow_cost), C.C_DNA,
                   f"DNA {int(p.dna)} / grow {int(grow_cost)}")
         y += 26
-        self._bar(surface, x, y, 230, 16, p.growth_level / C.MULTICELLULAR_LEVEL,
-                  C.C_MULTI, f"Evolution {p.growth_level}/{C.MULTICELLULAR_LEVEL}")
+        stage_name = "Multicellular" if p.stage == "multi" else "Cell stage"
+        self._bar(surface, x, y, 230, 16, p.growth_level / C.STAGE_MAX_LEVEL,
+                  C.C_MULTI, f"{stage_name} {p.growth_level}/{C.STAGE_MAX_LEVEL}")
         y += 24
-        self._text(surface, f"Diet: {p.diet}   Size: {int(p.radius)}   Gen: {p.generation}",
+        segs = f"   Segs: {p.n_segments()}" if p.stage == "multi" else ""
+        self._text(surface, f"Diet: {p.diet}   Size: {int(p.radius)}{segs}   Gen: {p.generation}",
                    x, y, self.font_s, C.C_TEXT)
         y += 18
         parts = ", ".join(f"{k}x{v}" for k, v in p.part_counts().items()) or "none"
         self._text(surface, f"Parts: {parts}", x, y, self.font_s, C.C_TEXT_DIM)
 
-        # ---- evolve prompt ----
-        if p.dna >= 9:
+        # ---- evolve / advance prompts ----
+        if p.can_advance_stage() or p.can_evolve_brain():
+            label = ("Press M to become MULTICELLULAR" if p.can_advance_stage()
+                     else "Press M to evolve a BRAIN")
+            prompt = self.font_m.render(label, True, C.C_MULTI)
+            pygame.draw.rect(surface, (14, 40, 30),
+                             (12, 214, prompt.get_width() + 20, 30), border_radius=5)
+            surface.blit(prompt, (22, 219))
+        elif p.dna >= 9:
             prompt = self.font_m.render("Press E to evolve", True, C.C_MULTI)
             pygame.draw.rect(surface, (10, 30, 24),
                              (12, 214, prompt.get_width() + 20, 30), border_radius=5)
@@ -189,7 +199,7 @@ class HUD:
         self._text(surface, llm, W - 250, H - 26, self.font_s, lcol)
 
         # controls hint (top center)
-        hint = "WASD / Arrows: swim    Ram cells to attack    E: evolve    Tab: overlay    Esc: pause"
+        hint = "WASD / Arrows: swim   Ram to attack   E: evolve   M: advance stage   Tab: overlay   Esc: pause"
         hsurf = self.font_s.render(hint, True, C.C_TEXT_DIM)
         surface.blit(hsurf, ((W - hsurf.get_width()) // 2, 10))
 
