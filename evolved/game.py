@@ -96,6 +96,7 @@ class Game:
         self._prompt_rects = None     # (yes_rect, no_rect) from the last draw
         self.advance_declined = False # player said "not yet" to multicellular
         self.brain_declined = False   # player said "not yet" to the brain
+        self._retry_timer = 2.0       # autopilot auto-retry countdown on death
 
     # ------------------------------------------------------------- lifecycle
     def _new_world(self):
@@ -301,7 +302,12 @@ class Game:
         elif self.state == STATE_PROMPT and self.autopilot and self.prompt:
             # the AI is playing: nobody will press Y, so it always says yes
             self.prompt["yes"]()
-        # editor / paused / gameover: world is frozen
+        elif self.state == STATE_GAMEOVER and self.autopilot:
+            # nobody will press R either - retry automatically
+            self._retry_timer -= dt
+            if self._retry_timer <= 0:
+                self._new_world()
+        # editor / paused / gameover (manual): world is frozen
 
     def _update_playing(self, dt):
         if not self.autopilot:
@@ -319,6 +325,7 @@ class Game:
 
         if self.world.player_dead:
             self.state = STATE_GAMEOVER
+            self._retry_timer = 2.0
         elif self.mate is None:
             # first time a stage bar fills mid-swim, offer what comes next
             p = self.world.player
@@ -349,10 +356,12 @@ class Game:
             p = self.world.player
             stage = {"cell": "cell", "multi": "multicellular",
                      "fish": "fish"}[p.stage]
+            tail = ("   R: try again   Esc: quit" if not self.autopilot else
+                    f"   Auto-retry in {max(0, math.ceil(self._retry_timer))}s...")
             self._overlay_text(
                 s, "You were consumed",
                 f"Survived {int(p.time_alive)}s as a {stage} (level {p.growth_level})"
-                f"  -  {p.food_eaten} eaten.   R: try again   Esc: quit",
+                f"  -  {p.food_eaten} eaten." + tail,
                 color=C.C_BAD)
 
     def _draw_prompt(self, surface):

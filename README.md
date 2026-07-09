@@ -103,7 +103,7 @@ python main.py --screenshot shot.png --frames 2000   # headless render after ~33
 | *(ram another organism)* | Attack on collision — automatic, using whatever offense you have (jaw, spikes, stingers, poison...). |
 | `E` | Call a mate. Swim into it to reproduce, which opens the **Evolution Editor**. (Press `E` again to skip the swim.) |
 | `M` | Advance to the next stage, any time your evolution bar is full. |
-| `P` | Toggle **autopilot**: the AI plays your organism (using the LLM when connected, heuristics otherwise) — it forages, fights, evolves, and answers stage prompts. Press again to take back control. |
+| `P` | Toggle **autopilot**: the AI plays your organism (using the LLM when connected, heuristics otherwise) — it forages, fights, evolves, answers stage prompts, and auto-retries 2 s after death. Press again to take back control. |
 | `Y` / `N` | Answer a stage-advancement question. |
 | `1`–`9`, `Q W T Y U I` | (Editor) buy parts by hotkey. |
 | `Space` / `E` / `Esc` | (Editor) close and return to the pond. |
