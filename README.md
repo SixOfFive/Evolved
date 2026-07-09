@@ -130,7 +130,7 @@ everyone else. Death is a restart (`R`).
 | Stage | How you get there | What it plays like |
 |---|---|---|
 | **Cell** | You start here. | Classic microbe life: dodge bigger cells, eat what your mouth allows, collect part meteors, grow five levels. |
-| **Multicellular** | Fill the cell bar → the game **asks** (yes/no). | You sprout a chain of trailing body segments and unlock tissue parts: segments, muscles, sensors, stingers, armor, photo cells. Bigger foods (algae) open up, much smaller prey can be swallowed whole, and your head generates **suction** — edible food within 2× your head radius is pulled into your mouth. |
+| **Multicellular** | Fill the cell bar → the game **asks** (yes/no). | You sprout a chain of trailing body segments and unlock tissue parts: segments, muscles, sensors, stingers, armor, photo cells. Bigger foods (algae) open up, much smaller prey can be swallowed whole, and your head generates **suction** — edible food within 3× your head radius is drawn to your mouth, speeding up as it gets close; swim away and it stops where it was. |
 | **Fish** | Fill the multicellular bar → choose to **evolve a brain**. | The endless endgame. Pectoral fins, a forked tail, and no level cap: each level costs more DNA and grants more size (up to a cap), more health, and **+7% outgoing damage — uncapped, forever**. |
 
 Stage advancement is always **your choice**:

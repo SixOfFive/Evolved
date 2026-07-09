@@ -120,9 +120,10 @@ ELECTRIC_RANGE_EXP = 0.35 # pulse radius grows as n**exp (4 jets = 1.6x range)
 ELECTRIC_DMG_EXP = 0.4    # pulse damage grows as n**exp
 
 # Multicellular+ head vacuum: edible food inside head_radius * mult is
-# pulled toward the mouth
-VACUUM_RANGE_MULT = 2.0
-VACUUM_PULL = 170.0       # px/s suction speed
+# pulled toward the mouth, accelerating as it gets closer. Leaving the
+# range stops the pull dead - food has no momentum of its own.
+VACUUM_RANGE_MULT = 3.0
+VACUUM_PULL = 170.0       # px/s base suction speed (edge of the range)
 CONTACT_PUSH = 260.0      # separation force when two cells overlap
 EAT_SIZE_RATIO = 1.12     # you can bite prey whose radius <= yours * this
 

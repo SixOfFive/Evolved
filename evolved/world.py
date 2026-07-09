@@ -168,10 +168,13 @@ class World:
                 if f.kind == "meat" and not cell.can_eat_meat:
                     continue
                 if vac and (fp - cell.pos).length() < vac + f.radius:
+                    # suck toward the mouth, faster the closer it gets
                     pull = mouth - fp
                     d = pull.length()
                     if d > 1e-6:
-                        f.pos = fp + pull * min(1.0, C.VACUUM_PULL * dt / d)
+                        closeness = 1.0 - min(1.0, d / vac)
+                        speed = C.VACUUM_PULL * (0.35 + 1.8 * closeness * closeness)
+                        f.pos = fp + pull * min(1.0, speed * dt / d)
                         fp = f.pos
                 if (fp - mouth).length() < reach + f.radius:
                     f.alive = False
