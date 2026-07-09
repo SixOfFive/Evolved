@@ -127,6 +127,25 @@ VACUUM_PULL = 170.0       # px/s base suction speed (edge of the range)
 CONTACT_PUSH = 260.0      # separation force when two cells overlap
 EAT_SIZE_RATIO = 1.12     # you can bite prey whose radius <= yours * this
 
+# Dash: a quick burst of speed on Space
+DASH_COST = 14.0          # energy per dash
+DASH_IMPULSE = 430.0      # instant velocity boost
+DASH_COOLDOWN = 1.3       # seconds between dashes
+
+# ---------------------------------------------------------------------------
+# The Leviathan - a rare epic predator
+# ---------------------------------------------------------------------------
+EPIC_MIN_AGE = 150.0      # world seconds before the first one can appear
+EPIC_CHECK_INTERVAL = 35.0
+EPIC_SPAWN_CHANCE = 0.35  # roll per check once the pond is old enough
+EPIC_RADIUS = 95.0
+EPIC_HP = 2600.0
+EPIC_SPEED = 175.0
+EPIC_TURN = 1.5
+EPIC_LIFETIME = 100.0     # seconds before it sinks back into the deep
+EPIC_DNA_JACKPOT = 320.0  # DNA awarded to whoever lands the killing blow
+C_EPIC = (96, 56, 120)
+
 # ---------------------------------------------------------------------------
 # AI population
 # ---------------------------------------------------------------------------

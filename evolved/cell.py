@@ -64,6 +64,7 @@ class Cell:
         self.max_energy = C.BASE_ENERGY
 
         self.alive = True
+        self.is_epic = False       # the Leviathan
         self.swallowed = False     # eaten whole -> leaves no meat behind
         self.last_attacker = None  # who hurt us last (for the AI flee reflex)
         self.last_hit_time = -999.0
@@ -76,6 +77,9 @@ class Cell:
         self.did_pulse = False     # set true the frame an electric pulse fires
         self.pulse_anim = 0.0      # >0 while drawing the pulse ring
         self.hurt_flash = 0.0      # >0 briefly after taking damage
+        self.dash_cd = 0.0         # seconds until the next dash is ready
+        self.speech = ""           # current speech-bubble text
+        self.speech_t = 0.0        # seconds the bubble stays up
 
         # brain / controller hooks (set externally)
         self.brain = None
@@ -354,6 +358,21 @@ class Cell:
         if kind != "cell":
             self.food_eaten += 1
 
+    def dash(self):
+        """A burst of speed along the current heading. Costs energy."""
+        if not self.alive or self.dash_cd > 0 or self.energy < C.DASH_COST:
+            return False
+        self.dash_cd = C.DASH_COOLDOWN
+        self.energy -= C.DASH_COST
+        d = (self.thrust if self.thrust.length_squared() > 0.01
+             else self.facing())
+        self.vel += d.normalize() * C.DASH_IMPULSE
+        return True
+
+    def say(self, text):
+        self.speech = str(text)[:38]
+        self.speech_t = 4.0
+
     def take_damage(self, amount, source=None):
         if amount <= 0 or not self.alive:
             return
@@ -470,6 +489,10 @@ class Cell:
             self.pulse_anim -= dt
         if self.hurt_flash > 0:
             self.hurt_flash -= dt
+        if self.dash_cd > 0:
+            self.dash_cd -= dt
+        if self.speech_t > 0:
+            self.speech_t -= dt
 
     # ------------------------------------------------------------------ draw
     def draw(self, surface, cam, t):

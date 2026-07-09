@@ -113,6 +113,9 @@ def _build_all():
     thump = _tone(55, 45, 140, 0.9, decay=1.6)
     fx["heartbeat"] = [_seq((thump, 0), (thump, -180),
                             (_tone(1, 1, 350, 0.0), 0))]
+    # the leviathan: a wavering sub-bass growl under a hiss of moving water
+    fx["epic"] = [_mix(_tone(60, 38, 900, 0.9, decay=0.8, vibrato=3.0),
+                       _tone(0, 0, 900, 0.22, shape="noise", decay=2.2))]
     return fx
 
 

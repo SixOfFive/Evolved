@@ -189,6 +189,14 @@ class Game:
                 self._offer_brain()
         elif event.key == pygame.K_p and self.state == STATE_PLAYING:
             self._toggle_autopilot()
+        elif (event.key == pygame.K_SPACE and self.state == STATE_PLAYING
+                and not self.autopilot):
+            p = self.world.player
+            if p.dash():
+                self.sound.play("dash")
+                tail = p.seg_pos[-1] if p.seg_pos else p.pos
+                self.world.fx.burst(tail, (170, 220, 235), n=7, speed=120,
+                                    size=2.0, life=0.5)
 
     def _toggle_autopilot(self):
         p = self.world.player
@@ -251,6 +259,7 @@ class Game:
         p = self.world.player
         p.advance_stage()
         self.sound.play("stage")
+        self.world.fx.ripple(p.pos, C.C_MULTI, max_radius=200, life=0.9)
         self.world.log("You are now a MULTICELLULAR organism! New parts await "
                        "in the editor.", C.C_MULTI)
         self.prompt = None
@@ -280,6 +289,7 @@ class Game:
         p = self.world.player
         p.become_fish()
         self.sound.play("stage")
+        self.world.fx.ripple(p.pos, C.C_MULTI, max_radius=260, life=1.1)
         self.world.log("You grew a brain - you are now a FISH! Keep eating "
                        "and growing; the pond is yours to rule.", C.C_MULTI)
         self.prompt = None
@@ -330,12 +340,15 @@ class Game:
         self.world.update(dt, self.t)
         self.camera.follow(self.world.player.pos, self.world.player.radius, dt)
 
-        # audio: listener follows the camera; thud when hurt; heartbeat when low
+        # audio + juice: listener follows the camera; thud & shake when hurt;
+        # heartbeat while critical
         p = self.world.player
         self.sound.listener = self.camera.center
         if self._last_player_hp is not None and p.alive:
-            if self._last_player_hp - p.health > 3.5:
+            lost = self._last_player_hp - p.health
+            if lost > 3.5:
                 self.sound.play("hurt")
+                self.camera.shake(min(11.0, 4.0 + lost * 0.5))
         self._last_player_hp = p.health if p.alive else None
         self.sound.heartbeat(p.alive and p.health < p.max_health * 0.25)
 

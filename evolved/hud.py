@@ -134,6 +134,23 @@ class HUD:
                                        True, cell.color)
             surface.blit(label, (sx - label.get_width() / 2, bar_y - 18))
 
+            # speech bubble: the organism's own words, straight from the LLM
+            if cell.speech_t > 0 and cell.speech:
+                txt = self.font_s.render(cell.speech, True, C.C_TEXT)
+                bw, bh = txt.get_width() + 14, txt.get_height() + 8
+                bx = sx - bw / 2
+                by = bar_y - 26 - bh
+                fade = min(1.0, cell.speech_t / 0.6)
+                bubble = pygame.Surface((bw, bh), pygame.SRCALPHA)
+                bubble.fill((14, 26, 44, int(215 * fade)))
+                surface.blit(bubble, (bx, by))
+                pygame.draw.rect(surface, cell.color, (bx, by, bw, bh), 1,
+                                 border_radius=4)
+                txt.set_alpha(int(255 * fade))
+                surface.blit(txt, (bx + 7, by + 4))
+                pygame.draw.polygon(surface, cell.color, [
+                    (sx - 4, by + bh), (sx + 4, by + bh), (sx, by + bh + 6)])
+
     # ----------------------------------------------------------------- HUD
     def draw(self, surface, world, cam, fps, manager, t, autopilot=False):
         p = world.player
@@ -211,8 +228,8 @@ class HUD:
         self._text(surface, llm, W - 250, H - 26, self.font_s, lcol)
 
         # controls hint (top center)
-        hint = ("WASD / Arrows: swim   Ram to attack   E: evolve   "
-                "M: advance stage   P: autopilot   Tab: overlay   Esc: pause")
+        hint = ("WASD/Arrows swim   Space dash   Ram to attack   E evolve   "
+                "M advance   P autopilot   Tab overlay   Esc pause")
         hsurf = self.font_s.render(hint, True, C.C_TEXT_DIM)
         surface.blit(hsurf, ((W - hsurf.get_width()) // 2, 10))
 
@@ -243,6 +260,12 @@ class HUD:
                 pygame.draw.circle(surface, C.C_METEOR, to_map(m.pos), 2)
         for cell in world.cells:
             if not cell.alive:
+                continue
+            if cell.is_epic:
+                # the Leviathan pulses on the minimap - you want to know
+                mp = to_map(cell.pos)
+                pygame.draw.circle(surface, C.C_EPIC, mp, 7)
+                pygame.draw.circle(surface, (230, 190, 255), mp, 7, 1)
                 continue
             col = C.C_PLAYER if cell.is_player else cell.color
             rad = 4 if cell.is_player else max(2, int(cell.radius / 12))

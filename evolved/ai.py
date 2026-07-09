@@ -21,6 +21,54 @@ from . import parts as P
 
 GOALS = ("forage", "hunt", "flee", "wander")
 
+
+class EpicBrain:
+    """The Leviathan's mind: no LLM, no evolution - relentless hunting.
+
+    It stalks the largest organism it can sense, favoring big prey over
+    near prey, and cruises the pond when nothing is worth chasing.
+    """
+
+    def __init__(self, cell, world):
+        self.cell = cell
+        self.world = world
+        self.goal = "hunt"
+        self.reason = "apex predator"
+        self.intended_diet = "carnivore"
+        self.awaiting_spawn_choice = False
+        self._target = None
+        self._retimer = 0.0
+        self._cruise = pygame.Vector2(C.WORLD_W / 2, C.WORLD_H / 2)
+
+    def update(self, dt):
+        cell = self.cell
+        self._retimer -= dt
+        if (self._retimer <= 0 or self._target is None
+                or not self._target.alive):
+            self._retimer = 2.0
+            best, best_score = None, -1e9
+            for o in self.world.cells:
+                if o is cell or not o.alive or o.is_epic:
+                    continue
+                d = (o.pos - cell.pos).length()
+                if d > 1700:
+                    continue
+                score = o.radius - d * 0.02
+                if score > best_score:
+                    best, best_score = o, score
+            self._target = best
+            if best is None:
+                self._cruise = pygame.Vector2(
+                    random.uniform(400, C.WORLD_W - 400),
+                    random.uniform(400, C.WORLD_H - 400))
+        aim = self._target.pos if self._target is not None else self._cruise
+        d = pygame.Vector2(aim) - cell.pos
+        if d.length_squared() > 1:
+            cell.thrust = d.normalize()
+
+    def apply_policy(self, policy):
+        pass  # the deep does not take advice
+
 _SYSTEM_PROMPT = (
     "You are the brain of a microbe competing to survive and evolve in a 2D "
     "primordial pond - like the water stages of Spore. You control ONE "
@@ -30,7 +78,8 @@ _SYSTEM_PROMPT = (
     "leveling forever with DNA, growing ever larger and stronger. "
     "Reply with ONLY compact JSON, no prose, of the form: "
     '{"goal":"forage|hunt|flee|wander","diet":"herbivore|carnivore|omnivore",'
-    '"evolve":["part_id",...],"grow":true|false,"reason":"few words"}. '
+    '"evolve":["part_id",...],"grow":true|false,"reason":"few words",'
+    '"say":"optional short in-character remark, 6 words max"}. '
     "Only choose evolve parts from allowed_parts. Herbivores eat plants/algae "
     "and must flee or defend; carnivores hunt smaller organisms and eat meat; "
     "omnivores do both. In the multicellular and fish stages prefer body "
@@ -504,6 +553,8 @@ class AIBrain:
                 self.world.log(
                     f"<- LLM [{self.cell.name}]: "
                     f"{strategy.strip().lower()}{extra}", C.C_LLM)
+                if self.reason:
+                    self.cell.say(self.reason)
                 return
         goal = policy.get("goal")
         if goal in GOALS:
@@ -518,6 +569,9 @@ class AIBrain:
         r = policy.get("reason")
         if isinstance(r, str):
             self.reason = r[:40]
+        say = policy.get("say")
+        if isinstance(say, str) and say.strip():
+            self.cell.say(say.strip())
         # feed line: what the LLM decided
         bits = [self.goal, self.intended_diet]
         if self.wishlist:

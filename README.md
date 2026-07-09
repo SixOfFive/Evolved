@@ -15,7 +15,14 @@ they buy parts, they grow, and they climb the same three stages. Late game, the 
 whichever apex fish out-evolved the others. Ideally you.
 
 All graphics are **drawn procedurally in Python** — no image assets, nothing to license. Everything
-you see is shapes and math at runtime.
+you see is shapes and math at runtime — and everything you *hear* too: all 17 sound effects are
+synthesized from raw oscillators at startup. Launching the game a second time automatically closes
+the previous instance.
+
+Beware the **LEVIATHAN**: once the pond matures, a screen-dominating epic predator occasionally
+rises from the deep for a while, hunting the largest thing it can find. Slaying it pays a
+legendary DNA jackpot. Watch the minimap. And keep an eye on the rivals' **speech bubbles** —
+what they say comes straight from the LLM's actual reasoning.
 
 ![A level-8 fish ruling the pond](docs/fish_gameplay.png)
 
@@ -100,6 +107,7 @@ python main.py --screenshot shot.png --frames 2000   # headless render after ~33
 | Input | Action |
 |---|---|
 | `W` `A` `S` `D` / Arrow keys | Swim. Your organism turns toward the held direction and accelerates. |
+| `Space` | **Dash** — a burst of speed along your heading. Costs energy, ~1.3 s cooldown. Dodge, ambush, escape. |
 | *(ram another organism)* | Attack on collision — automatic, using whatever offense you have (jaw, spikes, stingers, poison...). |
 | `E` | Call a mate. Swim into it to reproduce, which opens the **Evolution Editor**. (Press `E` again to skip the swim.) |
 | `M` | Advance to the next stage, any time your evolution bar is full. |

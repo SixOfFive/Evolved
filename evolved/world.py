@@ -15,7 +15,8 @@ from . import config as C
 from . import parts as P
 from .cell import Cell
 from .entities import Food, Meteor
-from .ai import AIBrain
+from .ai import AIBrain, EpicBrain
+from .particles import ParticleSystem
 
 
 def _stack(n):
@@ -29,6 +30,7 @@ class World:
         self.manager = manager
         self.demo = demo
         self.sound = sound
+        self.fx = ParticleSystem()
         self.cells = []
         self.foods = []
         self.meteors = []
@@ -39,6 +41,9 @@ class World:
         self._respawn_timer = 0.0
         self.ai_count = ai_count
         self.player_dead = False
+        self.epic = None
+        self._epic_timer = C.EPIC_MIN_AGE
+        self._epic_life = 0.0
 
         # --- food & meteors first, so spawn-time LLM snapshots see the world ---
         for _ in range(C.PLANT_COUNT):
@@ -144,6 +149,14 @@ class World:
             f.update(dt)
         for m in self.meteors:
             m.update(dt)
+        self.fx.update(dt)
+
+        # fast swimmers shed bubbles
+        for cell in self.cells:
+            if cell.alive and cell.vel.length_squared() > 190 * 190:
+                if random.random() < dt * 9:
+                    tail = cell.seg_pos[-1] if cell.seg_pos else cell.pos
+                    self.fx.bubble(tail, -cell.vel)
 
         # interactions
         self._resolve_eating(dt)
@@ -155,6 +168,9 @@ class World:
 
         # restock
         self._restock(dt)
+
+        # the Leviathan
+        self._update_epic(dt)
 
         # event fade
         for e in self.events:
@@ -201,6 +217,9 @@ class World:
                     cell.feed(f.dna, f.energy,
                               "plant" if f.kind == "algae" else f.kind)
                     self.play(f"eat_{f.kind}", pos=fp)
+                    self.fx.burst(fp, (C.C_MEAT_CORE if f.kind == "meat"
+                                       else C.C_PLANT_CORE),
+                                  n=4, speed=60, size=1.8, life=0.45)
             # meteors (any cell can crack one)
             for m in self.meteors:
                 if not m.alive:
@@ -209,6 +228,8 @@ class World:
                     m.alive = False
                     cell.feed(m.dna, 8.0, "meteor")
                     self.play("meteor", pos=m.pos)
+                    self.fx.burst(m.pos, C.C_METEOR_CORE, n=12, speed=130,
+                                  size=2.5, life=0.8)
                     if m.part_id not in cell.discovered:
                         cell.discovered.add(m.part_id)
                         if cell.is_player:
@@ -314,6 +335,8 @@ class World:
                 self.log(f"[atk] {attacker.name} swallowed {defender.name} "
                          "whole!", color)
             self.play("swallow", pos=defender.pos)
+            self.fx.burst(defender.pos, defender.color, n=10, speed=110,
+                          size=2.2, life=0.6)
             return
         dmg = 0.0
         pieces = []
@@ -376,6 +399,19 @@ class World:
                 self._spawn_meat(cell)
                 self.play("death", pos=cell.pos,
                           volume=1.0 if cell.is_player else 0.7)
+                self.fx.burst(cell.pos, cell.color,
+                              n=min(24, 8 + int(cell.radius / 3)),
+                              speed=150, size=3.0, life=0.9)
+            # slaying the Leviathan pays out a legendary jackpot
+            if cell.is_epic:
+                killer = cell.last_attacker
+                if killer is not None and getattr(killer, "alive", False):
+                    killer.feed(C.EPIC_DNA_JACKPOT, 60.0, "cell")
+                    killer.kills += 1
+                    self.log(f"{killer.name} SLEW THE LEVIATHAN! "
+                             f"+{int(C.EPIC_DNA_JACKPOT)} DNA!", C.C_MULTI)
+                    self.fx.ripple(cell.pos, C.C_MULTI, max_radius=320,
+                                   life=1.4)
             if cell.is_player:
                 self.player_dead = True
                 survivors.append(cell)  # keep for the game-over screen
@@ -412,8 +448,9 @@ class World:
             self.foods = [f for f in self.foods if f.alive]
         self.meteors = [m for m in self.meteors if m.alive]
 
-        # keep the rival population up
-        alive_rivals = sum(1 for c in self.cells if not c.is_player and c.alive)
+        # keep the rival population up (the Leviathan doesn't count)
+        alive_rivals = sum(1 for c in self.cells
+                           if not c.is_player and c.alive and not c.is_epic)
         if alive_rivals < C.AI_MIN_POP:
             self._respawn_timer -= dt
             if self._respawn_timer <= 0:
@@ -422,6 +459,58 @@ class World:
                 self.log("A new rival drifts in.", C.C_TEXT_DIM)
         else:
             self._respawn_timer = C.AI_RESPAWN_DELAY
+
+    # ------------------------------------------------------------ leviathan
+    def _update_epic(self, dt):
+        if self.epic is not None and self.epic.alive:
+            self._epic_life -= dt
+            if self._epic_life <= 0:
+                # it loses interest and sinks away (no corpse, no meat)
+                self.epic.alive = False
+                self.epic.swallowed = True
+                self.log("The LEVIATHAN sinks back into the deep.",
+                         C.C_EPIC)
+                self.epic = None
+            return
+        if self.epic is not None and not self.epic.alive:
+            self.epic = None  # slain - _cleanup handled the spoils
+            return
+        self._epic_timer -= dt
+        if self._epic_timer <= 0:
+            self._epic_timer = C.EPIC_CHECK_INTERVAL
+            if random.random() < C.EPIC_SPAWN_CHANCE:
+                self._spawn_epic()
+
+    def _spawn_epic(self):
+        # rises from a pond edge, far from the player
+        edges = [(60.0, random.uniform(0, C.WORLD_H)),
+                 (C.WORLD_W - 60.0, random.uniform(0, C.WORLD_H)),
+                 (random.uniform(0, C.WORLD_W), 60.0),
+                 (random.uniform(0, C.WORLD_W), C.WORLD_H - 60.0)]
+        pos = max(edges, key=lambda e: (pygame.Vector2(e) - self.player.pos)
+                  .length_squared())
+        epic = Cell(pos, is_player=False, color=C.C_EPIC, name="LEVIATHAN")
+        epic.is_epic = True
+        epic.stage = "fish"
+        epic.growth_level = 8
+        epic.radius = C.EPIC_RADIUS
+        for pid in ("jaw", "jaw", "spike", "spike", "spike", "stinger",
+                    "stinger", "armor", "armor", "sensor",
+                    "photo_cell", "photo_cell", "photo_cell"):
+            epic.add_part(pid, spend=False)
+        epic.recompute()
+        # an epic is beyond normal biology - stat overrides come last
+        epic.max_health = C.EPIC_HP
+        epic.health = C.EPIC_HP
+        epic.speed = C.EPIC_SPEED
+        epic.turn_rate = C.EPIC_TURN
+        epic.energy = epic.max_energy
+        epic.brain = EpicBrain(epic, self)
+        self.cells.append(epic)
+        self.epic = epic
+        self._epic_life = C.EPIC_LIFETIME
+        self.log("Something VAST stirs at the edge of the pond...", C.C_EPIC)
+        self.play("epic", volume=1.0)
 
     # ----------------------------------------------------------------- draw
     def draw_entities(self, surface, cam, t):
@@ -437,3 +526,4 @@ class World:
                 cell.draw(surface, cam, t)
         if self.player.alive:
             self.player.draw(surface, cam, t)
+        self.fx.draw(surface, cam)
