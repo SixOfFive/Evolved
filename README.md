@@ -107,7 +107,7 @@ python main.py --screenshot shot.png --frames 2000   # headless render after ~33
 | `Y` / `N` | Answer a stage-advancement question. |
 | `1`–`9`, `Q W T Y U I` | (Editor) buy parts by hotkey. |
 | `Space` / `E` / `Esc` | (Editor) close and return to the pond. |
-| `Tab` | Toggle the name/health overlay on rivals. |
+| `Tab` | Toggle the overhead overlay (name, health bar, and HP/total for every organism, yours included). |
 | `R` | (After death) start a new run. |
 | `Esc` | Pause / resume; quit from pause or death screens. |
 

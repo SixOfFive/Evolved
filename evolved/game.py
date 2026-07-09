@@ -439,9 +439,8 @@ class Game:
                 # respawn so the screenshot always shows a living cell
                 self._new_world()
                 if self.world.player.brain is None:
-                    from .ai import AIBrain
-                    self.world.player.brain = AIBrain(self.world.player, self.world,
-                                                      self.manager)
+                    self.world.player.brain = AIBrain(self.world.player,
+                                                      self.world, self.manager)
         self._draw()
         pygame.image.save(self.screen, path)
         print(f"[Evolved] saved gameplay screenshot -> {path}")

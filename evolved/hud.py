@@ -106,27 +106,33 @@ class HUD:
     # ------------------------------------------------------------ overhead
     def draw_overhead(self, surface, world, cam):
         for cell in world.cells:
-            if not cell.alive or cell.is_player:
+            if not cell.alive:
                 continue
-            if not cam.is_visible(cell.pos, cell.radius + 40):
+            if not cam.is_visible(cell.pos, cell.radius + 60):
                 continue
             sx, sy = cam.world_to_screen(cell.pos)
             r = cell.radius * cam.zoom
-            # health bar if hurt
-            if cell.health < cell.max_health - 0.5:
-                w = max(20, r * 2)
-                x = sx - w / 2
-                y = sy - r - 12
-                pygame.draw.rect(surface, (20, 20, 28), (x, y, w, 4))
-                frac = cell.health / cell.max_health
-                pygame.draw.rect(surface, C.C_HEALTH, (x, y, int(w * frac), 4))
-            # tiny diet tag; * = multicellular, FISH = fish
+
+            # health bar with hp/total below it - for everyone, player too
+            w = max(28, r * 2)
+            x = sx - w / 2
+            bar_y = sy - r - 26
+            pygame.draw.rect(surface, (20, 20, 28), (x, bar_y, w, 5))
+            frac = max(0.0, cell.health / cell.max_health)
+            pygame.draw.rect(surface, C.C_HEALTH, (x, bar_y, int(w * frac), 5))
+            pygame.draw.rect(surface, (60, 60, 72), (x, bar_y, w, 5), 1)
+            hp = self.font_s.render(
+                f"{int(cell.health)}/{int(cell.max_health)}", True, C.C_TEXT)
+            surface.blit(hp, (sx - hp.get_width() / 2, bar_y + 6))
+
+            # name + diet tag above the bar; * = multicellular, FISH = fish
             tag = {"herbivore": "H", "carnivore": "C", "omnivore": "O",
                    "none": "-"}[cell.diet]
             badge = {"cell": "", "multi": "*", "fish": " FISH"}[cell.stage]
-            label = self.font_s.render(f"{cell.name} {tag}{cell.growth_level}{badge}",
+            name = "You" if cell.is_player else cell.name
+            label = self.font_s.render(f"{name} {tag}{cell.growth_level}{badge}",
                                        True, cell.color)
-            surface.blit(label, (sx - label.get_width() / 2, sy - r - 30))
+            surface.blit(label, (sx - label.get_width() / 2, bar_y - 18))
 
     # ----------------------------------------------------------------- HUD
     def draw(self, surface, world, cam, fps, manager, t, autopilot=False):
