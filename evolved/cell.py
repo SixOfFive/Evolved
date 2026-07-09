@@ -65,6 +65,8 @@ class Cell:
 
         self.alive = True
         self.swallowed = False     # eaten whole -> leaves no meat behind
+        self.last_attacker = None  # who hurt us last (for the AI flee reflex)
+        self.last_hit_time = -999.0
         self.time_alive = 0.0
         self.diet_meter = 0.0      # +1 herbivore .. -1 carnivore
         self.food_eaten = 0
@@ -306,12 +308,26 @@ class Cell:
         self.max_health = new_max
         self.health = min(self.health, self.max_health)
 
-        # (re)build the segment chain if its length changed
+        # Adjust the segment chain WITHOUT disturbing existing segments -
+        # a full rebuild here made tails visibly jump every time an AI bought
+        # a part or a fish leveled up. New segments sprout off the tail tip,
+        # continuing the chain's current direction; removals trim the tip.
         if segs != len(self.seg_pos):
-            back = -self.facing()
-            self.seg_pos = [pygame.Vector2(self.pos)
-                            + back * self.radius * C.SEGMENT_SPACING * (i + 1)
-                            for i in range(segs)]
+            while len(self.seg_pos) > segs:
+                self.seg_pos.pop()
+            while len(self.seg_pos) < segs:
+                tail = (pygame.Vector2(self.seg_pos[-1]) if self.seg_pos
+                        else pygame.Vector2(self.pos))
+                prev = (pygame.Vector2(self.seg_pos[-2])
+                        if len(self.seg_pos) >= 2
+                        else (pygame.Vector2(self.pos) if self.seg_pos else None))
+                if prev is not None:
+                    d = tail - prev
+                    ext = (d.normalize() if d.length_squared() > 1e-6
+                           else -self.facing())
+                else:
+                    ext = -self.facing()
+                self.seg_pos.append(tail + ext * self.radius * C.SEGMENT_SPACING)
         self.seg_radius = [max(4.0, self.radius * (0.85 - 0.08 * i))
                            for i in range(segs)]
 
@@ -333,6 +349,9 @@ class Cell:
             return
         amount *= self.armor_mult
         self.health -= amount
+        if source is not None:
+            self.last_attacker = source
+            self.last_hit_time = self.time_alive
         self.hurt_flash = 0.25
         if self.health <= 0:
             self.health = 0

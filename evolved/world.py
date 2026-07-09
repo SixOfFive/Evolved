@@ -179,22 +179,74 @@ class World:
                 d = b.pos - a.pos
                 dist = d.length()
                 overlap = a.radius + b.radius - dist
-                if overlap <= 0:
-                    continue
-                # separation push (bigger cell shoves less)
-                if dist > 1e-6:
-                    nrm = d / dist
-                    total = a.radius + b.radius
-                    a.pos -= nrm * overlap * (b.radius / total) * 0.5
-                    b.pos += nrm * overlap * (a.radius / total) * 0.5
+                if overlap > 0:
+                    # separation push (bigger cell shoves less)
+                    if dist > 1e-6:
+                        nrm = d / dist
+                        total = a.radius + b.radius
+                        a.pos -= nrm * overlap * (b.radius / total) * 0.5
+                        b.pos += nrm * overlap * (a.radius / total) * 0.5
 
-                self._bite(a, b, dt)
-                self._bite(b, a, dt)
-                # poison auras
-                if a.has_poison and b.alive:
-                    b.take_damage(C.POISON_DMG * a.damage_mult * dt, a)
-                if b.has_poison and a.alive:
-                    a.take_damage(C.POISON_DMG * b.damage_mult * dt, b)
+                    self._bite(a, b, dt)
+                    self._bite(b, a, dt)
+                    # poison auras
+                    if a.has_poison and b.alive:
+                        b.take_damage(C.POISON_DMG * a.damage_mult * dt, a)
+                    if b.has_poison and a.alive:
+                        a.take_damage(C.POISON_DMG * b.damage_mult * dt, b)
+                else:
+                    # heads apart - but trailing tails are fair game too
+                    self._tail_contact(a, b, dt)
+                    self._tail_contact(b, a, dt)
+
+    def _tail_contact(self, attacker, defender, dt):
+        """The attacker's head touching the defender's body segments.
+
+        Tail chewing ignores the size gate (you're gnawing tissue, not
+        swallowing the organism) at reduced bite damage - so a long tail is
+        DNA in the bank for whoever catches it. The tail fights back with
+        stingers and poison, which is exactly what those parts are for.
+        """
+        if not attacker.alive or not defender.alive or not defender.seg_pos:
+            return
+        for sp, sr in zip(defender.seg_pos, defender.seg_radius):
+            off = attacker.pos - sp
+            dd = off.length()
+            pen = attacker.radius + sr - dd
+            if pen <= 0:
+                continue
+            # nudge the attacker's head out of the segment
+            if dd > 1e-6:
+                attacker.pos += (off / dd) * pen * 0.5
+
+            # all weapons work at reduced effect on tails (glancing tissue
+            # hits, not vital strikes) - otherwise packs of spiked chewers
+            # cascade into pond-wide wipeouts
+            f = C.TAIL_BITE_FACTOR
+            dmg = 0.0
+            if attacker.can_bite_cells:
+                bite = C.BITE_DMG * f * dt
+                dmg += bite
+                attacker.feed(0.0, bite * C.BITE_FEED, "cell")
+            facing = attacker.spikes_facing(sp)
+            if facing:
+                dmg += C.SPIKE_DMG * min(facing, 2) * f * dt
+            if attacker.n_sting:
+                dmg += C.STING_DMG * min(attacker.n_sting, 2) * f * dt
+            if attacker.has_poison:
+                dmg += C.POISON_DMG * f * dt
+            if dmg > 0:
+                defender.take_damage(dmg * attacker.damage_mult, attacker)
+
+            # tail defenses bite back at the same reduced effect
+            back = 0.0
+            if defender.n_sting:
+                back += C.STING_DMG * min(defender.n_sting, 2) * f * dt
+            if defender.has_poison:
+                back += C.POISON_DMG * f * dt
+            if back > 0:
+                attacker.take_damage(back * defender.damage_mult, defender)
+            return  # one segment contact per frame is plenty
 
     def _bite(self, attacker, defender, dt):
         if not attacker.alive or not defender.alive:

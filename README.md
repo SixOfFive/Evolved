@@ -200,6 +200,12 @@ fish apply their level-scaled damage bonus to everything they deal. Prey under ~
 **swallowed whole** (instant kill, no meat left). Anything else that dies bursts into meat chunks.
 Size is the master variable: growing turns yesterday's predator into today's snack.
 
+**Tails are attackable.** Body segments are part of your hitbox: anything that catches your trailing
+tail can chew it (bites ignore the size gate on tails, at half damage — even small scavengers can
+gnaw on a giant), so a long body is reach, health, and slots *and* a liability. Tail hits land at
+reduced effect, and the tail fights back: stingers and poison on the defender punish whoever is
+chewing. Guard your tail or armor it — and harass bigger organisms from behind.
+
 ## The LLM rivals
 
 Rival organisms are steered by a local LLM through Ollama (default `http://192.168.15.38:21434`,

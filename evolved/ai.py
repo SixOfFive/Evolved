@@ -182,7 +182,16 @@ class AIBrain:
         cell = self.cell
         detect = cell.detect_range
 
-        # reflex: a close, bigger threat overrides everything
+        # reflex: whoever is actively hurting us comes first - tail chewers
+        # can be smaller than us and would never register as "predators"
+        la = getattr(cell, "last_attacker", None)
+        if (la is not None and getattr(la, "alive", False)
+                and cell.time_alive - cell.last_hit_time < 1.5
+                and cell.health < cell.max_health * 0.6):
+            self._flee_from(la.pos)
+            return
+
+        # reflex: a close, bigger threat overrides everything else
         threat = self._nearest_predator(detect * 0.7)
         if threat is not None:
             td = (threat.pos - cell.pos).length()

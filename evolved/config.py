@@ -69,6 +69,9 @@ ARMOR_REDUCE = 0.16       # damage reduction per armor plate (multiplicative)
 ARMOR_REDUCE_FLOOR = 0.30 # armor can never reduce damage below this fraction
 PHOTO_ENERGY = 1.5        # energy/s generated per photosynthetic cell
 SWALLOW_RATIO = 0.45      # prey this much smaller than you is swallowed whole
+TAIL_BITE_FACTOR = 0.5    # tail chewing does this fraction of bite damage,
+                          # but ignores the size gate - long tails are a
+                          # liability anyone can gnaw on
 
 # Fish stage (the endless endgame - there is no leaving the pond)
 FISH_GROW_COST = 40.0     # DNA for a fish level; scales gently and forever
