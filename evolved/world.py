@@ -102,17 +102,14 @@ class World:
             self.events.pop(0)
 
     def log_attack(self, attacker, defender, kind):
-        """Feed line for combat, throttled per attacker->defender pair."""
+        """Feed line for combat involving the player, throttled per pair."""
+        if not (attacker.is_player or defender.is_player):
+            return  # rival-on-rival scraps stay out of the feed
         key = (attacker.id, defender.id)
         if self.time - self._atk_log.get(key, -99.0) < 4.0:
             return
         self._atk_log[key] = self.time
-        if defender.is_player:
-            color = C.C_BAD
-        elif attacker.is_player:
-            color = C.C_GOOD
-        else:
-            color = C.C_TEXT_DIM
+        color = C.C_BAD if defender.is_player else C.C_GOOD
         self.log(f"[atk] {attacker.name} -> {defender.name}: {kind}", color)
 
     # ---------------------------------------------------------------- update
@@ -304,10 +301,10 @@ class World:
             defender.swallowed = True
             attacker.kills += 1
             attacker.feed(5.0 + defender.radius * 0.35, 30.0, "cell")
-            color = (C.C_GOOD if attacker.is_player
-                     else C.C_BAD if defender.is_player else C.C_TEXT_DIM)
-            self.log(f"[atk] {attacker.name} swallowed {defender.name} whole!",
-                     color)
+            if attacker.is_player or defender.is_player:
+                color = C.C_GOOD if attacker.is_player else C.C_BAD
+                self.log(f"[atk] {attacker.name} swallowed {defender.name} "
+                         "whole!", color)
             return
         dmg = 0.0
         pieces = []
@@ -347,12 +344,11 @@ class World:
                     other.take_damage(dmg, cell)
                     hits += 1
                     hit_player = hit_player or other.is_player
-            if hits:
+            if hits and (cell.is_player or hit_player):
                 key = (cell.id, -1)
                 if self.time - self._atk_log.get(key, -99.0) >= 4.0:
                     self._atk_log[key] = self.time
-                    color = (C.C_GOOD if cell.is_player
-                             else C.C_BAD if hit_player else C.C_TEXT_DIM)
+                    color = C.C_GOOD if cell.is_player else C.C_BAD
                     self.log(f"[atk] {cell.name} zaps {hits} "
                              f"organism{'s' if hits > 1 else ''}", color)
 
