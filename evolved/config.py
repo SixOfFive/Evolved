@@ -65,8 +65,8 @@ MUSCLE_SPEED = 46.0       # + top speed per muscle cell
 MUSCLE_TURN = 0.6         # + turn rate per muscle cell
 SENSOR_RANGE = 210.0      # + detect range per sensory cell
 STING_DMG = 30.0          # dmg/s per stinger on contact (no facing needed)
-ARMOR_REDUCE = 0.16       # damage reduction per armor plate (multiplicative)
-ARMOR_REDUCE_FLOOR = 0.30 # armor can never reduce damage below this fraction
+ARMOR_REDUCE = 0.16       # damage reduction per plate - multiplicative, so
+                          # stacking always helps but never reaches zero
 PHOTO_ENERGY = 1.5        # energy/s generated per photosynthetic cell
 SWALLOW_RATIO = 0.45      # prey this much smaller than you is swallowed whole
 TAIL_BITE_FACTOR = 0.5    # tail chewing does this fraction of bite damage,

@@ -248,9 +248,9 @@ class Cell:
         if self.stage == "multi":
             return 2 + self.part_counts().get("segment", 0)
         if self.stage == "fish":
-            # fish lengthen as they level, up to a point
+            # fish lengthen as they level, forever
             return (3 + self.part_counts().get("segment", 0)
-                    + min(6, self.growth_level // 2))
+                    + self.growth_level // 2)
         return 0
 
     def recompute(self):
@@ -275,8 +275,7 @@ class Cell:
         n_armor = counts.get("armor", 0)
         self.n_sting = counts.get("stinger", 0)
         self.photo_rate = counts.get("photo_cell", 0) * C.PHOTO_ENERGY
-        self.armor_mult = max(C.ARMOR_REDUCE_FLOOR,
-                              (1.0 - C.ARMOR_REDUCE) ** n_armor)
+        self.armor_mult = (1.0 - C.ARMOR_REDUCE) ** n_armor
 
         has_filter = counts.get("filter_mouth", 0) > 0
         has_jaw = counts.get("jaw", 0) > 0

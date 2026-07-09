@@ -191,7 +191,7 @@ stinger, poison sac, and electric jet adds damage as `n^0.75` — always worth m
 | Muscle Cell | 16 | 0 | +46 speed, +0.6 turn. Renders as flapping fins. |
 | Sensory Cell | 12 | 0 | +210 perception range. |
 | Stinger | 18 | 1 | 30 dmg/s on any contact, no facing needed; stacks with diminishing returns. |
-| Armor Plate | 18 | 1 | Incoming damage ×0.84 per plate (floors at 30%). |
+| Armor Plate | 18 | 1 | Incoming damage ×0.84 per plate, multiplicative — every plate helps, but damage never reaches zero. |
 | Photo Cell | 15 | 2 | +1.5 energy/s from photosynthesis — offsets your metabolism. |
 
 ### Combat

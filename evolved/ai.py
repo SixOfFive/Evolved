@@ -372,22 +372,31 @@ class AIBrain:
             return True
 
         # 4) spend from the LLM wishlist, then stage-appropriate defaults.
-        # Owned mouths are never rebought (duplicates do nothing), other
-        # repeats cap at 3 (except segments) so builds stay varied, and
-        # bought wishlist entries are consumed.
+        # No hard caps - duplicates stack (with diminishing returns), so the
+        # pick is weighted instead: the more copies owned, the less likely
+        # another one is bought, and the LLM's wishes weigh triple.
         defaults = (_MULTI_PRIORITY if cell.stage in ("multi", "fish")
                     else _DEFAULT_PRIORITY)
-        for pid in list(self.wishlist) + defaults:
-            if pid in P.MOUTH_PARTS and counts.get(pid, 0) > 0:
-                if pid in self.wishlist:
-                    self.wishlist.remove(pid)
+        available = cell.available_parts()
+        candidates = []
+        for pid in dict.fromkeys(list(self.wishlist) + defaults):
+            if pid not in available or not cell.can_add(pid):
                 continue
-            if pid != "segment" and counts.get(pid, 0) >= 3:
-                continue
-            if pid in cell.available_parts() and self._try_buy(pid):
-                if pid in self.wishlist:
-                    self.wishlist.remove(pid)
-                return True
+            weight = 1.0 / ((counts.get(pid, 0) + 1) ** 1.5)
+            if pid in self.wishlist:
+                weight *= 3.0
+            candidates.append((pid, weight))
+        if not candidates:
+            return False
+        r = random.random() * sum(w for _, w in candidates)
+        for pid, w in candidates:
+            r -= w
+            if r <= 0:
+                if self._try_buy(pid):
+                    if pid in self.wishlist:
+                        self.wishlist.remove(pid)
+                    return True
+                return False
         return False
 
     def _buy_mouth_for(self, diet):
