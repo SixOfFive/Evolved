@@ -78,6 +78,13 @@ class AIBrain:
         # scale to a big pond, so brains re-scan a few times a second
         self._food_target = None
         self._retarget_timer = 0.0
+        # anti-orbit: fast cells with weak turning have a wide turning
+        # circle and can loop around close targets forever. Track closing
+        # progress and brake out of a detected orbit.
+        self._seek_pos = None
+        self._seek_best = float("inf")
+        self._stall = 0.0
+        self._brake = 0.0
 
     # ---------------------------------------------------------- spawn choice
     def begin_spawn_choice(self):
@@ -194,6 +201,7 @@ class AIBrain:
         cell = self.cell
         detect = cell.detect_range
         self._retarget_timer -= dt
+        self._brake = max(0.0, self._brake - dt)
 
         # reflex: whoever is actively hurting us comes first - tail chewers
         # can be smaller than us and would never register as "predators"
@@ -220,7 +228,7 @@ class AIBrain:
             if food is None and cell.can_bite_cells:
                 food = self._nearest_cell(lambda o: cell.tier_of(o) == "prey", detect)
             if food is not None:
-                self._seek(food.pos)
+                self._seek(food.pos, dt)
                 return
 
         goal = self.goal
@@ -250,14 +258,45 @@ class AIBrain:
             target = meteor
 
         if target is not None:
-            self._seek(target.pos)
+            self._seek(target.pos, dt)
         else:
             self._wander(dt)
 
-    def _seek(self, pos):
-        d = pygame.Vector2(pos) - self.cell.pos
-        if d.length_squared() > 1e-6:
-            self.cell.thrust = d.normalize()
+    def _seek(self, pos, dt=0.0):
+        cell = self.cell
+        d = pygame.Vector2(pos) - cell.pos
+        dist = d.length()
+        if dist < 1e-6:
+            return
+        dirv = d / dist
+
+        # orbit detection: same (near-static) target, but the gap has
+        # stopped closing -> we're circling it on a too-wide turning arc
+        if (self._seek_pos is not None
+                and (pygame.Vector2(pos) - self._seek_pos).length_squared() < 1600):
+            if dist < self._seek_best - 6.0:
+                self._seek_best = dist
+                self._stall = 0.0
+            else:
+                self._stall += dt
+        else:
+            self._seek_pos = pygame.Vector2(pos)
+            self._seek_best = dist
+            self._stall = 0.0
+        if self._stall > 1.4 and dist < 420:
+            self._brake = 0.7   # evade the loop: kill speed, then re-approach
+            self._stall = 0.0
+
+        # slow into sharp turns - turning radius is speed/turn_rate, so
+        # easing off the throttle is what makes tight approaches possible
+        desired = math.atan2(dirv.y, dirv.x)
+        diff = abs((desired - cell.angle + math.pi) % math.tau - math.pi)
+        mag = 1.0
+        if diff > 0.5:
+            mag = max(0.3, math.cos(min(diff, math.pi / 2)))
+        if self._brake > 0:
+            mag = 0.18          # crawl: tiny speed = tiny turning circle
+        cell.thrust = dirv * mag
 
     def _flee_from(self, pos):
         d = self.cell.pos - pygame.Vector2(pos)
