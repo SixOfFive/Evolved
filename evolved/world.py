@@ -18,6 +18,11 @@ from .entities import Food, Meteor
 from .ai import AIBrain
 
 
+def _stack(n):
+    """Diminishing-returns stacking for duplicate offensive parts."""
+    return n ** C.STACK_EXP if n > 0 else 0.0
+
+
 class World:
     def __init__(self, manager, ai_count=C.AI_CELL_COUNT, demo=False):
         self.manager = manager
@@ -121,7 +126,7 @@ class World:
             m.update(dt)
 
         # interactions
-        self._resolve_eating()
+        self._resolve_eating(dt)
         self._resolve_combat(dt)
         self._resolve_electric()
 
@@ -136,20 +141,25 @@ class World:
             e[1] -= dt
         self.events = [e for e in self.events if e[1] > 0]
 
-    def _resolve_eating(self):
+    def _resolve_eating(self, dt):
         for cell in self.cells:
             if not cell.alive:
                 continue
             mouth = cell.mouth_pos()
             reach = cell.radius * 0.75
-            # food (cheap axis rejection first - the pond holds ~1000 items)
-            mx, my = mouth.x, mouth.y
-            lim = reach + 22.0
+            # multicellular+ heads generate suction: edible food within
+            # head_radius * 2 of the head is pulled toward the mouth
+            vac = (cell.radius * C.VACUUM_RANGE_MULT
+                   if cell.stage != "cell" else 0.0)
+            # cheap axis rejection first - the pond holds ~1000 items.
+            # Centered on the head so it covers both mouth reach and vacuum.
+            cx, cy = cell.pos.x, cell.pos.y
+            lim = max(reach + cell.radius, vac) + 22.0
             for f in self.foods:
                 if not f.alive:
                     continue
                 fp = f.pos
-                if abs(fp.x - mx) > lim or abs(fp.y - my) > lim:
+                if abs(fp.x - cx) > lim or abs(fp.y - cy) > lim:
                     continue
                 if f.kind in ("plant", "algae") and not cell.can_eat_plant:
                     continue
@@ -157,6 +167,12 @@ class World:
                     continue
                 if f.kind == "meat" and not cell.can_eat_meat:
                     continue
+                if vac and (fp - cell.pos).length() < vac + f.radius:
+                    pull = mouth - fp
+                    d = pull.length()
+                    if d > 1e-6:
+                        f.pos = fp + pull * min(1.0, C.VACUUM_PULL * dt / d)
+                        fp = f.pos
                 if (fp - mouth).length() < reach + f.radius:
                     f.alive = False
                     cell.feed(f.dna, f.energy,
@@ -194,11 +210,13 @@ class World:
 
                     self._bite(a, b, dt)
                     self._bite(b, a, dt)
-                    # poison auras
+                    # poison auras (sacs stack)
                     if a.has_poison and b.alive:
-                        b.take_damage(C.POISON_DMG * a.damage_mult * dt, a)
+                        b.take_damage(C.POISON_DMG * _stack(a.n_poison)
+                                      * a.damage_mult * dt, a)
                     if b.has_poison and a.alive:
-                        a.take_damage(C.POISON_DMG * b.damage_mult * dt, b)
+                        a.take_damage(C.POISON_DMG * _stack(b.n_poison)
+                                      * b.damage_mult * dt, b)
                 else:
                     # heads apart - but trailing tails are fair game too
                     self._tail_contact(a, b, dt)
@@ -226,29 +244,29 @@ class World:
 
             # all weapons work at reduced effect on tails (glancing tissue
             # hits, not vital strikes) - otherwise packs of spiked chewers
-            # cascade into pond-wide wipeouts
+            # cascade into pond-wide wipeouts. Duplicates stack here too.
             f = C.TAIL_BITE_FACTOR
             dmg = 0.0
             if attacker.can_bite_cells:
-                bite = C.BITE_DMG * f * dt
+                bite = C.BITE_DMG * _stack(attacker.n_bite) * f * dt
                 dmg += bite
                 attacker.feed(0.0, bite * C.BITE_FEED, "cell")
             facing = attacker.spikes_facing(sp)
             if facing:
-                dmg += C.SPIKE_DMG * min(facing, 2) * f * dt
+                dmg += C.SPIKE_DMG * _stack(facing) * f * dt
             if attacker.n_sting:
-                dmg += C.STING_DMG * min(attacker.n_sting, 2) * f * dt
+                dmg += C.STING_DMG * _stack(attacker.n_sting) * f * dt
             if attacker.has_poison:
-                dmg += C.POISON_DMG * f * dt
+                dmg += C.POISON_DMG * _stack(attacker.n_poison) * f * dt
             if dmg > 0:
                 defender.take_damage(dmg * attacker.damage_mult, attacker)
 
             # tail defenses bite back at the same reduced effect
             back = 0.0
             if defender.n_sting:
-                back += C.STING_DMG * min(defender.n_sting, 2) * f * dt
+                back += C.STING_DMG * _stack(defender.n_sting) * f * dt
             if defender.has_poison:
-                back += C.POISON_DMG * f * dt
+                back += C.POISON_DMG * _stack(defender.n_poison) * f * dt
             if back > 0:
                 attacker.take_damage(back * defender.damage_mult, defender)
             return  # one segment contact per frame is plenty
@@ -270,19 +288,19 @@ class World:
                 self.log(f"{attacker.name} swallowed you whole!", C.C_BAD)
             return
         dmg = 0.0
-        # mouth bite: prey smaller than you
+        # mouth bite: prey smaller than you (extra jaws stack)
         if (attacker.can_bite_cells
                 and defender.radius <= attacker.radius * C.EAT_SIZE_RATIO):
-            bite = C.BITE_DMG * dt
+            bite = C.BITE_DMG * _stack(attacker.n_bite) * dt
             dmg += bite
             attacker.feed(0.0, bite * C.BITE_FEED, "cell")
-        # spikes that face the defender
+        # spikes that face the defender (all of them count)
         facing = attacker.spikes_facing(defender.pos)
         if facing:
-            dmg += C.SPIKE_DMG * facing * dt
+            dmg += C.SPIKE_DMG * _stack(facing) * dt
         # stinger tentacles hurt on any contact, no facing needed
         if attacker.n_sting:
-            dmg += C.STING_DMG * min(attacker.n_sting, 3) * dt
+            dmg += C.STING_DMG * _stack(attacker.n_sting) * dt
         if dmg > 0:
             defender.take_damage(dmg * attacker.damage_mult, attacker)
 
@@ -290,11 +308,14 @@ class World:
         for cell in self.cells:
             if not cell.alive or not cell.did_pulse:
                 continue
+            # more jets: wider pulse and harder hit, both diminishing
+            dmg = (C.ELECTRIC_DMG * (cell.n_electric ** C.ELECTRIC_DMG_EXP)
+                   * cell.damage_mult)
             for other in self.cells:
                 if other is cell or not other.alive:
                     continue
-                if (other.pos - cell.pos).length() <= C.ELECTRIC_RANGE + other.radius:
-                    other.take_damage(C.ELECTRIC_DMG * cell.damage_mult, cell)
+                if (other.pos - cell.pos).length() <= cell.electric_range + other.radius:
+                    other.take_damage(dmg, cell)
             if cell.is_player:
                 self.log("Zap! Electric discharge.", (150, 210, 255))
 

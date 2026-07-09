@@ -88,11 +88,15 @@ class Cell:
         self.can_bite_cells = False
         self.n_spike = 0
         self.n_sting = 0
+        self.n_bite = 0
+        self.n_poison = 0
+        self.n_electric = 0
         self.armor_mult = 1.0      # incoming damage multiplier (<=1)
         self.damage_mult = 1.0     # outgoing damage multiplier (fish levels)
         self.photo_rate = 0.0      # passive energy/s from photosynthesis
         self.has_poison = False
         self.has_electric = False
+        self.electric_range = C.ELECTRIC_RANGE
         self.detect_range = 360.0
         self.max_slots = C.BASE_SLOTS
         self.diet = "none"
@@ -255,8 +259,15 @@ class Cell:
         n_cil = counts.get("cilia", 0)
         self.n_spike = counts.get("spike", 0)
         n_eye = counts.get("eye", 0)
-        self.has_poison = counts.get("poison", 0) > 0
-        self.has_electric = counts.get("electric", 0) > 0
+        # real counts so duplicates stack (booleans kept for the renderer)
+        self.n_bite = counts.get("jaw", 0) + counts.get("proboscis", 0)
+        self.n_poison = counts.get("poison", 0)
+        self.n_electric = counts.get("electric", 0)
+        self.has_poison = self.n_poison > 0
+        self.has_electric = self.n_electric > 0
+        self.electric_range = (C.ELECTRIC_RANGE
+                               * (self.n_electric ** C.ELECTRIC_RANGE_EXP)
+                               if self.n_electric else C.ELECTRIC_RANGE)
 
         # multicellular tissue
         n_muscle = counts.get("muscle", 0)
@@ -385,7 +396,7 @@ class Cell:
             diff = (target_ang - wa + math.pi) % math.tau - math.pi
             if abs(diff) < 0.9:
                 n += 1
-        return min(n, 3)
+        return n
 
     # ----------------------------------------------------------------- update
     def update(self, dt):
@@ -484,7 +495,7 @@ class Cell:
         # electric pulse ring
         if self.pulse_anim > 0:
             prog = 1.0 - (self.pulse_anim / 0.35)
-            pr = r + prog * C.ELECTRIC_RANGE * cam.zoom
+            pr = r + prog * self.electric_range * cam.zoom
             col = (120, 200, 255)
             width = max(1, int(3 * cam.zoom))
             pygame.draw.circle(surface, col, (sx, sy), max(1, int(pr)), width)

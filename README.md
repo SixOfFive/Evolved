@@ -130,7 +130,7 @@ everyone else. Death is a restart (`R`).
 | Stage | How you get there | What it plays like |
 |---|---|---|
 | **Cell** | You start here. | Classic microbe life: dodge bigger cells, eat what your mouth allows, collect part meteors, grow five levels. |
-| **Multicellular** | Fill the cell bar → the game **asks** (yes/no). | You sprout a chain of trailing body segments and unlock tissue parts: segments, muscles, sensors, stingers, armor, photo cells. Bigger foods (algae) open up; much smaller prey can be swallowed whole. |
+| **Multicellular** | Fill the cell bar → the game **asks** (yes/no). | You sprout a chain of trailing body segments and unlock tissue parts: segments, muscles, sensors, stingers, armor, photo cells. Bigger foods (algae) open up, much smaller prey can be swallowed whole, and your head generates **suction** — edible food within 2× your head radius is pulled into your mouth. |
 | **Fish** | Fill the multicellular bar → choose to **evolve a brain**. | The endless endgame. Pectoral fins, a forked tail, and no level cap: each level costs more DNA and grants more size (up to a cap), more health, and **+7% outgoing damage — uncapped, forever**. |
 
 Stage advancement is always **your choice**:
@@ -163,9 +163,11 @@ Your mouth parts determine your diet, and your diet determines your food:
 
 ### Parts catalog
 
-Bought in the editor with DNA; removal refunds the full cost. Slots come from your level, your body
-segments, and every stage you've completed (slots never regress). *Unlock* is the growth level within
-the part's stage; part meteors can unlock things early.
+Bought in the editor with DNA; attached parts show as grouped chips ("25x Stinger") and clicking a
+chip removes one of that part with a full refund. Slots come from your level, your body segments,
+and every stage you've completed (slots never regress). **Duplicates stack**: every extra jaw, spike,
+stinger, poison sac, and electric jet adds damage as `n^0.75` — always worth more, never linear.
+*Unlock* is the growth level within the part's stage; part meteors can unlock things early.
 
 **Cell-stage parts** (available forever):
 
@@ -176,8 +178,8 @@ the part's stage; part meteors can unlock things early.
 | Proboscis | 22 | 3 | Omnivore mouth: plants *and* meat in one part. |
 | Flagellum | 10 | 0 | +58 top speed. |
 | Cilia | 9 | 2 | +2.6 rad/s turn rate. |
-| Spike | 13 | 1 | 26 dmg/s per spike facing the target (up to 3 count). Hurts rammers too. |
-| Electric Jet | 20 | 4 | Automatic shock pulse: 22 dmg to everything within 95 px, every 1.6 s. |
+| Spike | 13 | 1 | 26 dmg/s per facing spike; every spike counts (diminishing returns). Hurts rammers too. |
+| Electric Jet | 20 | 4 | Automatic shock pulse: 22 dmg within 95 px every 1.6 s. Extra jets widen the radius and raise the damage, both with diminishing returns. |
 | Poison Sac | 16 | 2 | Toxic aura: 18 dmg/s to anything touching you. |
 | Eye | 7 | 0 | +150 perception range (matters for AI; a bigger minimap read for you). |
 
@@ -188,7 +190,7 @@ the part's stage; part meteors can unlock things early.
 | Body Segment | 20 | 0 | +1 trailing body cell: +32 max health, +2 part slots. |
 | Muscle Cell | 16 | 0 | +46 speed, +0.6 turn. Renders as flapping fins. |
 | Sensory Cell | 12 | 0 | +210 perception range. |
-| Stinger | 18 | 1 | 30 dmg/s on any contact, no facing needed (up to 3 count). |
+| Stinger | 18 | 1 | 30 dmg/s on any contact, no facing needed; stacks with diminishing returns. |
 | Armor Plate | 18 | 1 | Incoming damage ×0.84 per plate (floors at 30%). |
 | Photo Cell | 15 | 2 | +1.5 energy/s from photosynthesis — offsets your metabolism. |
 

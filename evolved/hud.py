@@ -170,7 +170,7 @@ class HUD:
         self._text(surface, f"Diet: {p.diet}   Size: {int(p.radius)}{segs}   Gen: {p.generation}",
                    x, y, self.font_s, C.C_TEXT)
         y += 18
-        parts = ", ".join(f"{k}x{v}" for k, v in p.part_counts().items()) or "none"
+        parts = ", ".join(f"{v}x {k}" for k, v in p.part_counts().items()) or "none"
         self._text(surface, f"Parts: {parts}", x, y, self.font_s, C.C_TEXT_DIM)
 
         # ---- evolve / advance prompts ----

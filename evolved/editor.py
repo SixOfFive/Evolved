@@ -92,10 +92,16 @@ class Editor:
                 if rect.collidepoint(mp):
                     self._try_add(player, pid)
                     return None
-            for rect, idx in self.chip_rects:
+            for rect, pid in self.chip_rects:
                 if rect.collidepoint(mp):
-                    player.remove_part(idx)
-                    self.message = "Removed a part (DNA refunded)."
+                    # remove one instance of this part type, newest first
+                    for i in range(len(player.parts) - 1, -1, -1):
+                        if player.parts[i].id == pid:
+                            player.remove_part(i)
+                            pdef = P.PART_DEFS[pid]
+                            self.message = (f"Removed 1 {pdef.name} "
+                                            f"(+{int(pdef.cost)} DNA)")
+                            break
                     return None
         return None
 
@@ -149,34 +155,40 @@ class Editor:
         cam = _PreviewCam(pv_rect.center, (cx, cy), zoom)
         player.draw(surface, cam, t)
 
-        # attached-part chips (removable) along the bottom of the preview.
-        # Lay them out first so we know how many rows they need, then draw
-        # top-down with the caption above them.
+        # attached-part chips along the bottom of the preview, grouped by
+        # type ("25x Stinger") so big builds don't drown in chips. Clicking
+        # a chip removes ONE of that part and refunds its DNA.
         self.chip_rects = []
-        labels = [hud.font_s.render(f"x {P.PART_DEFS[ap.id].name}", True, C.C_TEXT)
-                  for ap in player.parts]
+        counts = player.part_counts()
+        entries = [(pid, counts[pid]) for pid in P.PART_ORDER if pid in counts]
+        labels = []
+        for pid, n in entries:
+            name = P.PART_DEFS[pid].name
+            text = f"{n}x {name}" if n > 1 else name
+            labels.append((pid, hud.font_s.render(f"- {text}", True, C.C_TEXT)))
         rows, row = [], []
         cx = pv_rect.left + 12
-        for idx, label in enumerate(labels):
+        for pid, label in labels:
             cw = label.get_width() + 14
             if row and cx + cw > pv_rect.right - 12:
                 rows.append(row)
                 row = []
                 cx = pv_rect.left + 12
-            row.append((idx, label, cx, cw))
+            row.append((pid, label, cx, cw))
             cx += cw + 8
         if row:
             rows.append(row)
         cy = pv_rect.bottom - 12 - len(rows) * 26
-        surface.blit(hud.font_s.render("(click a part to remove & refund)", True,
-                                       C.C_TEXT_DIM), (pv_rect.left + 12, cy - 22))
+        surface.blit(hud.font_s.render("(click to remove one & refund its DNA)",
+                                       True, C.C_TEXT_DIM),
+                     (pv_rect.left + 12, cy - 22))
         for r in rows:
-            for idx, label, cx, cw in r:
+            for pid, label, cx, cw in r:
                 chip = pygame.Rect(cx, cy, cw, 22)
                 pygame.draw.rect(surface, (40, 30, 40), chip, border_radius=4)
                 pygame.draw.rect(surface, (120, 80, 80), chip, 1, border_radius=4)
                 surface.blit(label, (cx + 7, cy + 3))
-                self.chip_rects.append((chip, idx))
+                self.chip_rects.append((chip, pid))
             cy += 26
 
         # part buttons (right)

@@ -112,6 +112,17 @@ POISON_DMG = 18.0         # dmg/s aura to anything touching a poison cell
 ELECTRIC_DMG = 22.0       # dmg per electric pulse
 ELECTRIC_RANGE = 95.0
 ELECTRIC_COOLDOWN = 1.6   # seconds between pulses
+
+# Stacking: duplicate offensive parts all count, with diminishing returns.
+# effective = base * n ** STACK_EXP  (e.g. 4 jaws = 2.8x, 25 stingers = 11x)
+STACK_EXP = 0.75
+ELECTRIC_RANGE_EXP = 0.35 # pulse radius grows as n**exp (4 jets = 1.6x range)
+ELECTRIC_DMG_EXP = 0.4    # pulse damage grows as n**exp
+
+# Multicellular+ head vacuum: edible food inside head_radius * mult is
+# pulled toward the mouth
+VACUUM_RANGE_MULT = 2.0
+VACUUM_PULL = 170.0       # px/s suction speed
 CONTACT_PUSH = 260.0      # separation force when two cells overlap
 EAT_SIZE_RATIO = 1.12     # you can bite prey whose radius <= yours * this
 
