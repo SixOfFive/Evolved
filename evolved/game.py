@@ -186,9 +186,9 @@ class Game:
             # keep playing the build the player was going for
             diet = p.diet if p.diet != "none" else None
             p.brain = AIBrain(p, self.world, self.manager, intended_diet=diet)
-            mode = "LLM" if self.manager.enabled else "heuristics"
-            self.world.log(f"Autopilot engaged ({mode}) - press P to take "
-                           "back control.", C.C_MULTI)
+            mode = ("-> LLM now controls the player" if self.manager.enabled
+                    else "-> heuristics now control the player")
+            self.world.log(f"{mode}  (P to take back control)", C.C_LLM)
         else:
             p.brain = None
             p.thrust = pygame.Vector2(0, 0)

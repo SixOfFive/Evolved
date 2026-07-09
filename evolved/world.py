@@ -30,7 +30,9 @@ class World:
         self.cells = []
         self.foods = []
         self.meteors = []
-        self.events = []          # [text, ttl, color]
+        self.events = []          # bottom feed: [text, ttl, color], last 5
+        self.time = 0.0
+        self._atk_log = {}        # (attacker id, defender id) -> last log time
         self._food_timer = 0.0
         self._respawn_timer = 0.0
         self.ai_count = ai_count
@@ -95,12 +97,27 @@ class World:
 
     # --------------------------------------------------------------- logging
     def log(self, text, color=C.C_TEXT):
-        self.events.append([text, 5.0, color])
-        if len(self.events) > 6:
+        self.events.append([text, 6.0, color])
+        if len(self.events) > 5:
             self.events.pop(0)
+
+    def log_attack(self, attacker, defender, kind):
+        """Feed line for combat, throttled per attacker->defender pair."""
+        key = (attacker.id, defender.id)
+        if self.time - self._atk_log.get(key, -99.0) < 4.0:
+            return
+        self._atk_log[key] = self.time
+        if defender.is_player:
+            color = C.C_BAD
+        elif attacker.is_player:
+            color = C.C_GOOD
+        else:
+            color = C.C_TEXT_DIM
+        self.log(f"[atk] {attacker.name} -> {defender.name}: {kind}", color)
 
     # ---------------------------------------------------------------- update
     def update(self, dt, t):
+        self.time += dt
         # apply any finished LLM policies
         for cell_id, policy in self.manager.drain_results():
             if policy is None:
@@ -263,6 +280,7 @@ class World:
                 dmg += C.POISON_DMG * _stack(attacker.n_poison) * f * dt
             if dmg > 0:
                 defender.take_damage(dmg * attacker.damage_mult, attacker)
+                self.log_attack(attacker, defender, "tail chew")
 
             # tail defenses bite back at the same reduced effect
             back = 0.0
@@ -272,6 +290,7 @@ class World:
                 back += C.POISON_DMG * _stack(defender.n_poison) * f * dt
             if back > 0:
                 attacker.take_damage(back * defender.damage_mult, defender)
+                self.log_attack(defender, attacker, "tail defense")
             return  # one segment contact per frame is plenty
 
     def _bite(self, attacker, defender, dt):
@@ -285,27 +304,32 @@ class World:
             defender.swallowed = True
             attacker.kills += 1
             attacker.feed(5.0 + defender.radius * 0.35, 30.0, "cell")
-            if attacker.is_player:
-                self.log(f"You swallowed {defender.name} whole!", C.C_GOOD)
-            elif defender.is_player:
-                self.log(f"{attacker.name} swallowed you whole!", C.C_BAD)
+            color = (C.C_GOOD if attacker.is_player
+                     else C.C_BAD if defender.is_player else C.C_TEXT_DIM)
+            self.log(f"[atk] {attacker.name} swallowed {defender.name} whole!",
+                     color)
             return
         dmg = 0.0
+        pieces = []
         # mouth bite: prey smaller than you (extra jaws stack)
         if (attacker.can_bite_cells
                 and defender.radius <= attacker.radius * C.EAT_SIZE_RATIO):
             bite = C.BITE_DMG * _stack(attacker.n_bite) * dt
             dmg += bite
             attacker.feed(0.0, bite * C.BITE_FEED, "cell")
+            pieces.append("bite")
         # spikes that face the defender (all of them count)
         facing = attacker.spikes_facing(defender.pos)
         if facing:
             dmg += C.SPIKE_DMG * _stack(facing) * dt
+            pieces.append(f"{facing} spike" + ("s" if facing > 1 else ""))
         # stinger tentacles hurt on any contact, no facing needed
         if attacker.n_sting:
             dmg += C.STING_DMG * _stack(attacker.n_sting) * dt
+            pieces.append("sting")
         if dmg > 0:
             defender.take_damage(dmg * attacker.damage_mult, attacker)
+            self.log_attack(attacker, defender, " + ".join(pieces))
 
     def _resolve_electric(self):
         for cell in self.cells:
@@ -314,13 +338,23 @@ class World:
             # more jets: wider pulse and harder hit, both diminishing
             dmg = (C.ELECTRIC_DMG * (cell.n_electric ** C.ELECTRIC_DMG_EXP)
                    * cell.damage_mult)
+            hits = 0
+            hit_player = False
             for other in self.cells:
                 if other is cell or not other.alive:
                     continue
                 if (other.pos - cell.pos).length() <= cell.electric_range + other.radius:
                     other.take_damage(dmg, cell)
-            if cell.is_player:
-                self.log("Zap! Electric discharge.", (150, 210, 255))
+                    hits += 1
+                    hit_player = hit_player or other.is_player
+            if hits:
+                key = (cell.id, -1)
+                if self.time - self._atk_log.get(key, -99.0) >= 4.0:
+                    self._atk_log[key] = self.time
+                    color = (C.C_GOOD if cell.is_player
+                             else C.C_BAD if hit_player else C.C_TEXT_DIM)
+                    self.log(f"[atk] {cell.name} zaps {hits} "
+                             f"organism{'s' if hits > 1 else ''}", color)
 
     def _cleanup(self, dt):
         survivors = []

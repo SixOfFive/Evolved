@@ -181,3 +181,4 @@ C_PANEL = (16, 30, 50)
 C_PANEL_LINE = (44, 70, 100)
 C_GOOD = (120, 220, 150)
 C_BAD = (235, 110, 110)
+C_LLM = (140, 185, 240)   # LLM request/reply lines in the bottom feed

@@ -92,8 +92,11 @@ class AIBrain:
         self.awaiting_spawn_choice = True
         self._spawn_choice_timer = 8.0   # heuristic fallback deadline
         state = self._snapshot()
-        if not self.manager.request(self.cell.id, _SPAWN_PROMPT,
-                                    json.dumps(state)):
+        if self.manager.request(self.cell.id, _SPAWN_PROMPT,
+                                json.dumps(state)):
+            self.world.log(f"-> LLM [{self.cell.name}]: hunt, harvest or both?",
+                           C.C_LLM)
+        else:
             self.equip_starting_mouth()
 
     def equip_starting_mouth(self):
@@ -419,7 +422,10 @@ class AIBrain:
         if not self.manager.enabled or self.manager.busy(self.cell.id):
             return
         state = self._snapshot()
-        self.manager.request(self.cell.id, _SYSTEM_PROMPT, json.dumps(state))
+        if self.manager.request(self.cell.id, _SYSTEM_PROMPT, json.dumps(state)):
+            what = ("control the player" if self.cell.is_player
+                    else "what's my move?")
+            self.world.log(f"-> LLM [{self.cell.name}]: {what}", C.C_LLM)
 
     def _snapshot(self):
         cell = self.cell
@@ -494,10 +500,10 @@ class AIBrain:
                 r = policy.get("reason")
                 if isinstance(r, str):
                     self.reason = r[:40]
+                extra = f' ("{self.reason}")' if self.reason else ""
                 self.world.log(
-                    f"{self.cell.name} chose to "
-                    f"{ {'carnivore': 'hunt', 'herbivore': 'harvest', 'omnivore': 'hunt and harvest'}[diet] }.",
-                    self.cell.color)
+                    f"<- LLM [{self.cell.name}]: "
+                    f"{strategy.strip().lower()}{extra}", C.C_LLM)
                 return
         goal = policy.get("goal")
         if goal in GOALS:
@@ -512,3 +518,10 @@ class AIBrain:
         r = policy.get("reason")
         if isinstance(r, str):
             self.reason = r[:40]
+        # feed line: what the LLM decided
+        bits = [self.goal, self.intended_diet]
+        if self.wishlist:
+            bits.append("evolve " + ",".join(self.wishlist[:2]))
+        if self.want_grow:
+            bits.append("grow")
+        self.world.log(f"<- LLM [{self.cell.name}]: {', '.join(bits)}", C.C_LLM)
