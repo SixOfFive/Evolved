@@ -13,6 +13,7 @@ from .player import PlayerController
 from .hud import HUD
 from .editor import Editor
 from .llm import OllamaClient, LLMManager
+from .sound import SoundManager
 
 STATE_PLAYING = "playing"
 STATE_EDITOR = "editor"
@@ -53,6 +54,11 @@ class Mate:
 class Game:
     def __init__(self, args):
         self.args = args
+        # low-latency mono mixer for the synthesized effects
+        try:
+            pygame.mixer.pre_init(22050, -16, 1, 512)
+        except pygame.error:
+            pass
         pygame.init()
         pygame.display.set_caption(C.TITLE)
         flags = pygame.RESIZABLE
@@ -78,12 +84,17 @@ class Game:
 
         self.hud = HUD(C.SCREEN_W, C.SCREEN_H)
         self.editor = Editor(self.hud)
+        # (sound manager is created below and handed to the editor + world)
         self.camera = Camera(*self.screen.get_size())
+        self.sound = SoundManager()
+        self.editor.sound = self.sound
+        self._last_player_hp = None
         self.demo = getattr(args, "demo", False)
         # autopilot: the AI plays the player cell (LLM if connected, else
         # heuristics). --demo starts with it on; P toggles it any time.
         self.autopilot = self.demo
-        self.world = World(self.manager, ai_count=args.ai_cells, demo=self.demo)
+        self.world = World(self.manager, ai_count=args.ai_cells, demo=self.demo,
+                           sound=self.sound)
         self.controller = PlayerController(self.world.player)
         self.camera.snap(self.world.player.pos, self.world.player.radius)
 
@@ -104,7 +115,7 @@ class Game:
         # rivals' spawn decisions aren't stuck behind stale requests
         self.manager.clear_pending()
         self.world = World(self.manager, ai_count=self.args.ai_cells,
-                           demo=self.autopilot)
+                           demo=self.autopilot, sound=self.sound)
         self.controller = PlayerController(self.world.player)
         self.camera.snap(self.world.player.pos, self.world.player.radius)
         self.mate = None
@@ -201,6 +212,7 @@ class Game:
         spawn.x = max(20, min(C.WORLD_W - 20, spawn.x))
         spawn.y = max(20, min(C.WORLD_H - 20, spawn.y))
         self.mate = Mate(spawn, p.color)
+        self.sound.play("mate")
         self.world.log("You called a mate - swim into it to reproduce & evolve.",
                        (255, 150, 180))
 
@@ -238,6 +250,7 @@ class Game:
     def _do_advance(self):
         p = self.world.player
         p.advance_stage()
+        self.sound.play("stage")
         self.world.log("You are now a MULTICELLULAR organism! New parts await "
                        "in the editor.", C.C_MULTI)
         self.prompt = None
@@ -266,6 +279,7 @@ class Game:
     def _do_brain(self):
         p = self.world.player
         p.become_fish()
+        self.sound.play("stage")
         self.world.log("You grew a brain - you are now a FISH! Keep eating "
                        "and growing; the pond is yours to rule.", C.C_MULTI)
         self.prompt = None
@@ -315,6 +329,15 @@ class Game:
             self.controller.update(keys)
         self.world.update(dt, self.t)
         self.camera.follow(self.world.player.pos, self.world.player.radius, dt)
+
+        # audio: listener follows the camera; thud when hurt; heartbeat when low
+        p = self.world.player
+        self.sound.listener = self.camera.center
+        if self._last_player_hp is not None and p.alive:
+            if self._last_player_hp - p.health > 3.5:
+                self.sound.play("hurt")
+        self._last_player_hp = p.health if p.alive else None
+        self.sound.heartbeat(p.alive and p.health < p.max_health * 0.25)
 
         if self.mate is not None:
             self.mate.update(dt, self.world.player.pos)

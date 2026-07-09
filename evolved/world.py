@@ -24,9 +24,11 @@ def _stack(n):
 
 
 class World:
-    def __init__(self, manager, ai_count=C.AI_CELL_COUNT, demo=False):
+    def __init__(self, manager, ai_count=C.AI_CELL_COUNT, demo=False,
+                 sound=None):
         self.manager = manager
         self.demo = demo
+        self.sound = sound
         self.cells = []
         self.foods = []
         self.meteors = []
@@ -94,6 +96,10 @@ class World:
         cell.energy = cell.max_energy
         self.cells.append(cell)
         return cell
+
+    def play(self, name, pos=None, volume=1.0):
+        if self.sound is not None:
+            self.sound.play(name, pos=pos, volume=volume)
 
     # --------------------------------------------------------------- logging
     def log(self, text, color=C.C_TEXT):
@@ -194,6 +200,7 @@ class World:
                     f.alive = False
                     cell.feed(f.dna, f.energy,
                               "plant" if f.kind == "algae" else f.kind)
+                    self.play(f"eat_{f.kind}", pos=fp)
             # meteors (any cell can crack one)
             for m in self.meteors:
                 if not m.alive:
@@ -201,6 +208,7 @@ class World:
                 if (m.pos - cell.pos).length() < cell.radius + m.radius:
                     m.alive = False
                     cell.feed(m.dna, 8.0, "meteor")
+                    self.play("meteor", pos=m.pos)
                     if m.part_id not in cell.discovered:
                         cell.discovered.add(m.part_id)
                         if cell.is_player:
@@ -305,6 +313,7 @@ class World:
                 color = C.C_GOOD if attacker.is_player else C.C_BAD
                 self.log(f"[atk] {attacker.name} swallowed {defender.name} "
                          "whole!", color)
+            self.play("swallow", pos=defender.pos)
             return
         dmg = 0.0
         pieces = []
@@ -327,6 +336,8 @@ class World:
         if dmg > 0:
             defender.take_damage(dmg * attacker.damage_mult, attacker)
             self.log_attack(attacker, defender, " + ".join(pieces))
+            self.play("bite" if pieces and pieces[0] == "bite" else "sting",
+                      pos=defender.pos, volume=0.8)
 
     def _resolve_electric(self):
         for cell in self.cells:
@@ -344,6 +355,8 @@ class World:
                     other.take_damage(dmg, cell)
                     hits += 1
                     hit_player = hit_player or other.is_player
+            if hits:
+                self.play("zap", pos=cell.pos)
             if hits and (cell.is_player or hit_player):
                 key = (cell.id, -1)
                 if self.time - self._atk_log.get(key, -99.0) >= 4.0:
@@ -361,6 +374,8 @@ class World:
             # death: burst into meat (unless swallowed whole)
             if not cell.swallowed:
                 self._spawn_meat(cell)
+                self.play("death", pos=cell.pos,
+                          volume=1.0 if cell.is_player else 0.7)
             if cell.is_player:
                 self.player_dead = True
                 survivors.append(cell)  # keep for the game-over screen

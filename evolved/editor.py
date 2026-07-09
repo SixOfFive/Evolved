@@ -29,12 +29,17 @@ class _PreviewCam:
 class Editor:
     def __init__(self, hud):
         self.hud = hud
+        self.sound = None       # set by the game
         self.buttons = []       # (rect, part_id)
-        self.chip_rects = []    # (rect, part_index)
+        self.chip_rects = []    # (rect, part_id)
         self.grow_rect = None
         self.done_rect = None
         self._size = None
         self.message = ""
+
+    def _play(self, name):
+        if self.sound is not None:
+            self.sound.play(name)
 
     def open(self, surface, player):
         self.message = ""
@@ -85,6 +90,7 @@ class Editor:
                 else:
                     self.layout(self._size, player)
                     self.message = f"Grew to evolution level {player.growth_level}!"
+                    self._play("grow")
                 return None
             if self.done_rect and self.done_rect.collidepoint(mp):
                 return "close"
@@ -101,6 +107,7 @@ class Editor:
                             pdef = P.PART_DEFS[pid]
                             self.message = (f"Removed 1 {pdef.name} "
                                             f"(+{int(pdef.cost)} DNA)")
+                            self._play("click")
                             break
                     return None
         return None
@@ -118,6 +125,7 @@ class Editor:
             return
         if player.add_part(pid):
             self.message = f"Added {pdef.name}."
+            self._play("click")
 
     # -------------------------------------------------------------- drawing
     def draw(self, surface, player, t):
