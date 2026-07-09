@@ -73,7 +73,7 @@ python main.py [options]
 | `--ollama-port PORT` | `21434` | Port of the Ollama server. |
 | `--model NAME` | `qwen3:4b` | Ollama model used for rival strategy. Any JSON-capable chat model works. |
 | `--no-llm` | off | Disable the LLM entirely. Rivals run on pure heuristics — still competent, less varied. |
-| `--ai-cells N` | `7` | Number of rival organisms. The world keeps at least 4 alive, respawning newcomers. |
+| `--ai-cells N` | `10` | Number of rival organisms. The world keeps at least 6 alive, respawning newcomers. |
 | `--demo` | off | Hands-off mode: an AI brain drives *your* cell too (it answers stage prompts itself). Good for watching the ecosystem. |
 | `--screenshot PATH` | — | Headless mode: simulate `--frames` frames without a window, save a gameplay PNG to `PATH` plus an editor PNG to `PATH_editor.png`, then exit. Used for testing/CI. |
 | `--frames N` | `300` | How many frames to simulate before `--screenshot` captures. |

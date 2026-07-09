@@ -66,7 +66,7 @@ class World:
         """A position away from the player, for fresh rivals."""
         for _ in range(20):
             p = pygame.Vector2(self._rand_pos())
-            if 480 < (p - self.player.pos).length() < 1200:
+            if 600 < (p - self.player.pos).length() < 2000:
                 return p
         return pygame.Vector2(self._rand_pos())
 
@@ -142,9 +142,14 @@ class World:
                 continue
             mouth = cell.mouth_pos()
             reach = cell.radius * 0.75
-            # food
+            # food (cheap axis rejection first - the pond holds ~1000 items)
+            mx, my = mouth.x, mouth.y
+            lim = reach + 22.0
             for f in self.foods:
                 if not f.alive:
+                    continue
+                fp = f.pos
+                if abs(fp.x - mx) > lim or abs(fp.y - my) > lim:
                     continue
                 if f.kind in ("plant", "algae") and not cell.can_eat_plant:
                     continue
@@ -152,7 +157,7 @@ class World:
                     continue
                 if f.kind == "meat" and not cell.can_eat_meat:
                     continue
-                if (f.pos - mouth).length() < reach + f.radius:
+                if (fp - mouth).length() < reach + f.radius:
                     f.alive = False
                     cell.feed(f.dna, f.energy,
                               "plant" if f.kind == "algae" else f.kind)
@@ -318,19 +323,23 @@ class World:
             self.foods.append(Food(cell.pos + off, "meat"))
 
     def _restock(self, dt):
-        # keep plants topped up (a few per frame so the ocean stays fed)
-        plants = sum(1 for f in self.foods if f.alive and f.kind == "plant")
-        for _ in range(min(3, C.PLANT_COUNT - plants)):
-            self.foods.append(Food(self._rand_pos(), "plant"))
-        algae = sum(1 for f in self.foods if f.alive and f.kind == "algae")
-        if algae < C.ALGAE_COUNT and random.random() < 0.05:
-            self.foods.append(Food(self._rand_pos(), "algae"))
+        # counting ~1000 food items is not free - take stock a few times a
+        # second and top up in small batches
+        self._food_timer -= dt
+        if self._food_timer <= 0:
+            self._food_timer = 0.3
+            plants = sum(1 for f in self.foods if f.alive and f.kind == "plant")
+            for _ in range(min(18, C.PLANT_COUNT - plants)):
+                self.foods.append(Food(self._rand_pos(), "plant"))
+            algae = sum(1 for f in self.foods if f.alive and f.kind == "algae")
+            if algae < C.ALGAE_COUNT and random.random() < 0.3:
+                self.foods.append(Food(self._rand_pos(), "algae"))
         # drop the occasional meteor
         live_meteors = sum(1 for m in self.meteors if m.alive)
         if live_meteors < C.METEOR_COUNT and random.random() < 0.004:
             self.meteors.append(Meteor(self._rand_pos()))
         # prune dead entities occasionally
-        if len(self.foods) > C.PLANT_COUNT * 3:
+        if len(self.foods) > C.PLANT_COUNT + C.ALGAE_COUNT + 500:
             self.foods = [f for f in self.foods if f.alive]
         self.meteors = [m for m in self.meteors if m.alive]
 

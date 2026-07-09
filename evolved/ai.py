@@ -74,7 +74,10 @@ class AIBrain:
         self._llm_timer = random.uniform(0.5, C.LLM_POLICY_INTERVAL)
         self._evolve_timer = random.uniform(1.0, 3.0)
         self._wander_angle = random.uniform(0, math.tau)
-        self._target = None
+        # cached food target: scanning every food item every frame doesn't
+        # scale to a big pond, so brains re-scan a few times a second
+        self._food_target = None
+        self._retarget_timer = 0.0
 
     # ---------------------------------------------------------- spawn choice
     def begin_spawn_choice(self):
@@ -151,6 +154,15 @@ class AIBrain:
             kinds.append("meat")
         return tuple(kinds)
 
+    def _food_target_get(self, kinds, max_dist):
+        """The nearest edible food, cached between periodic re-scans."""
+        t = self._food_target
+        if (self._retarget_timer <= 0 or t is None or not t.alive
+                or t.kind not in kinds):
+            self._food_target = self._nearest_food(kinds, max_dist)
+            self._retarget_timer = random.uniform(0.25, 0.4)
+        return self._food_target
+
     # ------------------------------------------------------------------ update
     def update(self, dt):
         cell = self.cell
@@ -181,6 +193,7 @@ class AIBrain:
     def _steer(self, dt):
         cell = self.cell
         detect = cell.detect_range
+        self._retarget_timer -= dt
 
         # reflex: whoever is actively hurting us comes first - tail chewers
         # can be smaller than us and would never register as "predators"
@@ -203,7 +216,7 @@ class AIBrain:
         # hunger: when energy runs low, drop everything and go eat
         if cell.energy < cell.max_energy * 0.35:
             kinds = self._edible_kinds()
-            food = self._nearest_food(kinds, detect * 1.6) if kinds else None
+            food = self._food_target_get(kinds, detect * 1.6) if kinds else None
             if food is None and cell.can_bite_cells:
                 food = self._nearest_cell(lambda o: cell.tier_of(o) == "prey", detect)
             if food is not None:
@@ -220,11 +233,11 @@ class AIBrain:
             target = self._nearest_cell(
                 lambda o: cell.tier_of(o) == "prey", detect)
             if target is None and cell.can_eat_meat:
-                target = self._nearest_food(("meat",), detect)
+                target = self._food_target_get(("meat",), detect)
         elif goal == "forage" or target is None:
             kinds = self._edible_kinds()
             if kinds:
-                target = self._nearest_food(kinds, detect)
+                target = self._food_target_get(kinds, detect)
             if target is None and cell.can_bite_cells:
                 target = self._nearest_cell(
                     lambda o: cell.tier_of(o) == "prey", detect)

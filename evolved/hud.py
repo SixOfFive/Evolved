@@ -30,7 +30,7 @@ class HUD:
         # background particle field in world space
         self.particles = [(random.uniform(0, C.WORLD_W),
                            random.uniform(0, C.WORLD_H),
-                           random.uniform(0.6, 1.8)) for _ in range(160)]
+                           random.uniform(0.6, 1.8)) for _ in range(420)]
 
     # ---------------------------------------------------------- background
     def _ensure_bg(self, size):

@@ -13,8 +13,8 @@ SCREEN_H = 800
 FPS = 60
 TITLE = "Evolved - Cell Stage"
 
-WORLD_W = 3200
-WORLD_H = 2400
+WORLD_W = 6400
+WORLD_H = 4800
 
 # Camera zoom: 1.0 = neutral. The camera zooms out (smaller value) as the
 # player's cell grows so the world stays readable.
@@ -84,10 +84,10 @@ FISH_DMG_PER_LEVEL = 0.07 # +7% outgoing damage per fish level, uncapped
 # ---------------------------------------------------------------------------
 # Food / world density
 # ---------------------------------------------------------------------------
-PLANT_COUNT = 210
+PLANT_COUNT = 840         # scaled with pond area to keep the same density
 MEAT_DECAY = 22.0         # seconds before an un-eaten meat chunk dissolves
-METEOR_COUNT = 12
-ALGAE_COUNT = 45          # big plant clusters, food for large/multicellular life
+METEOR_COUNT = 24
+ALGAE_COUNT = 180         # big plant clusters, food for large/multicellular life
 PLANT_RADIUS = 5.0
 MEAT_RADIUS = 6.5
 METEOR_RADIUS = 9.0
@@ -118,8 +118,8 @@ EAT_SIZE_RATIO = 1.12     # you can bite prey whose radius <= yours * this
 # ---------------------------------------------------------------------------
 # AI population
 # ---------------------------------------------------------------------------
-AI_CELL_COUNT = 7
-AI_MIN_POP = 4            # respawn rivals to keep at least this many
+AI_CELL_COUNT = 10
+AI_MIN_POP = 6            # respawn rivals to keep at least this many
 AI_RESPAWN_DELAY = 6.0
 
 # LLM policy cadence (seconds between strategy refreshes per brain, staggered)
