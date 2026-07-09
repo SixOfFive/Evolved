@@ -11,6 +11,7 @@ env/
 
 # Test / runtime artifacts
 *.log
+.evolved.pid
 screenshots/*.png
 !screenshots/.gitkeep
 
