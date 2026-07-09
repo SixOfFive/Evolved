@@ -129,7 +129,7 @@ class HUD:
             surface.blit(label, (sx - label.get_width() / 2, sy - r - 30))
 
     # ----------------------------------------------------------------- HUD
-    def draw(self, surface, world, cam, fps, manager, t):
+    def draw(self, surface, world, cam, fps, manager, t, autopilot=False):
         p = world.player
         W, H = surface.get_size()
 
@@ -205,9 +205,21 @@ class HUD:
         self._text(surface, llm, W - 250, H - 26, self.font_s, lcol)
 
         # controls hint (top center)
-        hint = "WASD / Arrows: swim   Ram to attack   E: evolve   M: advance stage   Tab: overlay   Esc: pause"
+        hint = ("WASD / Arrows: swim   Ram to attack   E: evolve   "
+                "M: advance stage   P: autopilot   Tab: overlay   Esc: pause")
         hsurf = self.font_s.render(hint, True, C.C_TEXT_DIM)
         surface.blit(hsurf, ((W - hsurf.get_width()) // 2, 10))
+
+        # autopilot badge, front and center so it's obvious who's driving
+        if autopilot:
+            mode = "LLM" if manager.enabled else "heuristics"
+            badge = self.font_m.render(f"AUTOPILOT ({mode})  -  P to take control",
+                                       True, C.C_MULTI)
+            bx = (W - badge.get_width()) // 2
+            pygame.draw.rect(surface, (12, 36, 28),
+                             (bx - 10, 30, badge.get_width() + 20, 28),
+                             border_radius=6)
+            surface.blit(badge, (bx, 34))
 
     def _draw_minimap(self, surface, world, cam, W):
         mw, mh = 200, int(200 * C.WORLD_H / C.WORLD_W)

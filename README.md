@@ -74,7 +74,7 @@ python main.py [options]
 | `--model NAME` | `qwen3:4b` | Ollama model used for rival strategy. Any JSON-capable chat model works. |
 | `--no-llm` | off | Disable the LLM entirely. Rivals run on pure heuristics — still competent, less varied. |
 | `--ai-cells N` | `10` | Number of rival organisms. The world keeps at least 6 alive, respawning newcomers. |
-| `--demo` | off | Hands-off mode: an AI brain drives *your* cell too (it answers stage prompts itself). Good for watching the ecosystem. |
+| `--demo` | off | Start with **autopilot** already on (same as pressing `P` immediately). Good for watching the ecosystem run itself. |
 | `--screenshot PATH` | — | Headless mode: simulate `--frames` frames without a window, save a gameplay PNG to `PATH` plus an editor PNG to `PATH_editor.png`, then exit. Used for testing/CI. |
 | `--frames N` | `300` | How many frames to simulate before `--screenshot` captures. |
 | `--autoquit SECONDS` | `0` (off) | Close the window automatically after N seconds. Used for smoke tests. |
@@ -103,6 +103,7 @@ python main.py --screenshot shot.png --frames 2000   # headless render after ~33
 | *(ram another organism)* | Attack on collision — automatic, using whatever offense you have (jaw, spikes, stingers, poison...). |
 | `E` | Call a mate. Swim into it to reproduce, which opens the **Evolution Editor**. (Press `E` again to skip the swim.) |
 | `M` | Advance to the next stage, any time your evolution bar is full. |
+| `P` | Toggle **autopilot**: the AI plays your organism (using the LLM when connected, heuristics otherwise) — it forages, fights, evolves, and answers stage prompts. Press again to take back control. |
 | `Y` / `N` | Answer a stage-advancement question. |
 | `1`–`9`, `Q W T Y U I` | (Editor) buy parts by hotkey. |
 | `Space` / `E` / `Esc` | (Editor) close and return to the pond. |

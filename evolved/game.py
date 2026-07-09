@@ -6,6 +6,7 @@ import os
 import pygame
 
 from . import config as C
+from .ai import AIBrain
 from .camera import Camera
 from .world import World
 from .player import PlayerController
@@ -79,6 +80,9 @@ class Game:
         self.editor = Editor(self.hud)
         self.camera = Camera(*self.screen.get_size())
         self.demo = getattr(args, "demo", False)
+        # autopilot: the AI plays the player cell (LLM if connected, else
+        # heuristics). --demo starts with it on; P toggles it any time.
+        self.autopilot = self.demo
         self.world = World(self.manager, ai_count=args.ai_cells, demo=self.demo)
         self.controller = PlayerController(self.world.player)
         self.camera.snap(self.world.player.pos, self.world.player.radius)
@@ -98,7 +102,8 @@ class Game:
         # drop queued LLM work from the previous population so the new
         # rivals' spawn decisions aren't stuck behind stale requests
         self.manager.clear_pending()
-        self.world = World(self.manager, ai_count=self.args.ai_cells, demo=self.demo)
+        self.world = World(self.manager, ai_count=self.args.ai_cells,
+                           demo=self.autopilot)
         self.controller = PlayerController(self.world.player)
         self.camera.snap(self.world.player.pos, self.world.player.radius)
         self.mate = None
@@ -170,6 +175,23 @@ class Game:
                 self._offer_advance()
             elif p.can_evolve_brain():
                 self._offer_brain()
+        elif event.key == pygame.K_p and self.state == STATE_PLAYING:
+            self._toggle_autopilot()
+
+    def _toggle_autopilot(self):
+        p = self.world.player
+        self.autopilot = not self.autopilot
+        if self.autopilot:
+            # keep playing the build the player was going for
+            diet = p.diet if p.diet != "none" else None
+            p.brain = AIBrain(p, self.world, self.manager, intended_diet=diet)
+            mode = "LLM" if self.manager.enabled else "heuristics"
+            self.world.log(f"Autopilot engaged ({mode}) - press P to take "
+                           "back control.", C.C_MULTI)
+        else:
+            p.brain = None
+            p.thrust = pygame.Vector2(0, 0)
+            self.world.log("Autopilot off - you have control.", C.C_TEXT_DIM)
 
     def _call_mate(self):
         p = self.world.player
@@ -276,13 +298,13 @@ class Game:
     def _update(self, dt):
         if self.state == STATE_PLAYING:
             self._update_playing(dt)
-        elif self.state == STATE_PROMPT and self.demo and self.prompt:
-            # hands-off demo: nobody can press Y, so the AI always says yes
+        elif self.state == STATE_PROMPT and self.autopilot and self.prompt:
+            # the AI is playing: nobody will press Y, so it always says yes
             self.prompt["yes"]()
         # editor / paused / gameover: world is frozen
 
     def _update_playing(self, dt):
-        if not self.demo:
+        if not self.autopilot:
             keys = pygame.key.get_pressed()
             self.controller.update(keys)
         self.world.update(dt, self.t)
@@ -315,7 +337,7 @@ class Game:
         if self.show_overlay:
             self.hud.draw_overhead(s, self.world, self.camera)
         self.hud.draw(s, self.world, self.camera, self.clock.get_fps(),
-                      self.manager, self.t)
+                      self.manager, self.t, autopilot=self.autopilot)
 
         if self.state == STATE_EDITOR:
             self.editor.draw(s, self.world.player, self.t)
@@ -396,9 +418,10 @@ class Game:
         dt = 1.0 / C.FPS
         # let the demo player drive so there is visible action
         if self.world.player.brain is None:
-            from .ai import AIBrain
-            self.world.player.brain = AIBrain(self.world.player, self.world, self.manager)
-            self.demo = True
+            self.world.player.brain = AIBrain(self.world.player, self.world,
+                                              self.manager)
+        self.demo = True
+        self.autopilot = True
         for _ in range(frames):
             self.t += dt
             self.world.update(dt, self.t)
