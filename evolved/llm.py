@@ -55,10 +55,11 @@ class OllamaClient:
             return False
 
     def chat_json(self, system, user):
-        """Return (parsed dict | None, throttled: bool).
+        """Return (parsed dict | None, diag dict).
 
-        `throttled` is True when the server answered 429 - the caller should
-        back off instead of retrying immediately.
+        diag["kind"] is one of: ok, 429, http, timeout, conn, badjson, error.
+        diag["detail"] is a short human explanation; diag["latency"] is the
+        round-trip in seconds when a response actually came back.
         """
         payload = {
             "model": self.model,
@@ -74,18 +75,33 @@ class OllamaClient:
                 "num_predict": 220,
             },
         }
+        t0 = time.time()
         try:
             r = requests.post(self.base + "/api/chat", json=payload,
                               timeout=self.timeout)
+            latency = time.time() - t0
             if r.status_code == 429:
-                return None, True
+                return None, {"kind": "429", "latency": latency,
+                              "detail": "rate-limited (HTTP 429)"}
             if r.status_code != 200:
-                return None, False
+                return None, {"kind": "http", "latency": latency,
+                              "detail": f"HTTP {r.status_code} from server"}
             data = r.json()
             content = data.get("message", {}).get("content", "")
-            return _extract_json(content), False
-        except Exception:
-            return None, False
+            parsed = _extract_json(content)
+            if parsed is None:
+                return None, {"kind": "badjson", "latency": latency,
+                              "detail": "unparseable reply from model"}
+            return parsed, {"kind": "ok", "latency": latency, "detail": "ok"}
+        except requests.exceptions.Timeout:
+            return None, {"kind": "timeout", "latency": None,
+                          "detail": f"timeout after {self.timeout:.0f}s"}
+        except requests.exceptions.ConnectionError as e:
+            return None, {"kind": "conn", "latency": None,
+                          "detail": f"connection error: {str(e)[:60]}"}
+        except Exception as e:
+            return None, {"kind": "error", "latency": None,
+                          "detail": f"{type(e).__name__}: {str(e)[:60]}"}
 
 
 class LLMManager:
@@ -98,9 +114,10 @@ class LLMManager:
 
     WORKERS = 4
 
-    def __init__(self, client, enabled=True):
+    def __init__(self, client, enabled=True, disabled_reason=""):
         self.client = client
         self.enabled = enabled
+        self.disabled_reason = disabled_reason or "LLM disabled"
         self._jobs = queue.Queue()
         self._results = queue.Queue()
         self._inflight = set()
@@ -112,6 +129,12 @@ class LLMManager:
         # with the pause growing on repeat offenses and resetting on success
         self._gate = 0.0
         self._backoff = 6.0
+        # health diagnostics for the in-game feed
+        self._last_ok = None          # time.time() of the last good reply
+        self._last_error = ""         # human text of the last failure
+        self._consec_fail = 0
+        self._first_request = None
+        self._latencies = []          # last few successful round-trips
 
     def start(self):
         if not self.enabled:
@@ -151,6 +174,8 @@ class LLMManager:
                 return False
             self._inflight.add(cell_id)
         self.stats["requests"] += 1
+        if self._first_request is None:
+            self._first_request = time.time()
         self._jobs.put((cell_id, system, user))
         return True
 
@@ -167,6 +192,49 @@ class LLMManager:
     def throttled(self):
         return time.time() < self._gate
 
+    def avg_latency(self):
+        if not self._latencies:
+            return None
+        return sum(self._latencies) / len(self._latencies)
+
+    def heuristics_reason(self):
+        """Why heuristics are driving right now - or None if the LLM is fine.
+
+        The verdict: healthy means a good reply landed within the last 20s.
+        Everything else produces a human-readable explanation for the feed.
+        """
+        if not self.enabled:
+            return self.disabled_reason
+        now = time.time()
+        if now < self._gate:
+            msg = f"{self._last_error or 'rate-limited'}; retrying in " \
+                  f"{int(self._gate - now) + 1}s"
+            return self._with_history(msg, now)
+        if self._first_request is None:
+            return None  # nothing has been asked of it yet
+        if self._last_ok is not None and now - self._last_ok < 20.0:
+            return None  # healthy
+        if self._last_ok is None and self._consec_fail == 0 \
+                and self.stats["throttled"] == 0:
+            waited = now - self._first_request
+            if waited < 15.0:
+                return None  # give the first request a fair chance
+            return f"no reply yet, first request sent {int(waited)}s ago " \
+                   f"(model may be cold-loading)"
+        msg = self._last_error or "no recent replies"
+        if self._consec_fail > 1:
+            msg += f" ({self._consec_fail} in a row)"
+        return self._with_history(msg, now)
+
+    def _with_history(self, msg, now):
+        parts = [msg]
+        if self._last_ok is not None:
+            parts.append(f"last good reply {int(now - self._last_ok)}s ago")
+        avg = self.avg_latency()
+        if avg is not None:
+            parts.append(f"avg round-trip {avg:.1f}s")
+        return "; ".join(parts)
+
     def _worker(self):
         while not self._stop.is_set():
             try:
@@ -176,20 +244,29 @@ class LLMManager:
             # honor the 429 backoff gate before touching the server
             while not self._stop.is_set() and time.time() < self._gate:
                 time.sleep(0.25)
-            result, throttled = None, False
+            result, diag = None, {"kind": "error", "detail": "internal"}
             try:
-                result, throttled = self.client.chat_json(system, user)
-            except Exception:
-                result = None
-            if throttled:
+                result, diag = self.client.chat_json(system, user)
+            except Exception as e:
+                diag = {"kind": "error", "latency": None,
+                        "detail": f"{type(e).__name__}"}
+            kind = diag.get("kind")
+            if kind == "429":
                 self.stats["throttled"] += 1
+                self._last_error = diag["detail"]
                 self._gate = time.time() + self._backoff
                 self._backoff = min(60.0, self._backoff * 1.7)
-            elif result is not None:
+            elif kind == "ok":
                 self.stats["ok"] += 1
                 self._backoff = 6.0
+                self._last_ok = time.time()
+                self._consec_fail = 0
+                self._latencies.append(diag["latency"])
+                del self._latencies[:-10]
             else:
                 self.stats["fail"] += 1
+                self._consec_fail += 1
+                self._last_error = diag.get("detail", "unknown error")
             self._results.put((cell_id, result))
             with self._inflight_lock:
                 self._inflight.discard(cell_id)

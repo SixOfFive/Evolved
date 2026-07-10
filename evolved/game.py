@@ -72,16 +72,24 @@ class Game:
 
         client = OllamaClient(args.ollama_host, args.ollama_port, args.model)
         enabled = (not args.no_llm)
-        if enabled:
-            ok = client.available()
-            if not ok:
-                print(f"[Evolved] Ollama at {client.base} not reachable - "
-                      f"rivals will use heuristics only.")
+        disabled_reason = ""
+        if args.no_llm:
+            disabled_reason = "--no-llm flag set"
+        else:
+            if not client.available():
+                disabled_reason = f"Ollama unreachable at {client.base}"
+                print(f"[Evolved] {disabled_reason} - rivals will use "
+                      f"heuristics only.")
                 enabled = False
             else:
                 print(f"[Evolved] Ollama connected: {client.base} model={args.model}")
-        self.manager = LLMManager(client, enabled=enabled)
+        self.manager = LLMManager(client, enabled=enabled,
+                                  disabled_reason=disabled_reason)
         self.manager.start()
+        # heuristics-mode notices for the feed
+        self._llm_check_timer = 2.0
+        self._llm_next_notice = 8.0
+        self._llm_was_down = False
 
         self.hud = HUD(C.SCREEN_W, C.SCREEN_H)
         self.editor = Editor(self.hud)
@@ -355,6 +363,24 @@ class Game:
                 self.camera.shake(min(11.0, 4.0 + lost * 0.5))
         self._last_player_hp = p.health if p.alive else None
         self.sound.heartbeat(p.alive and p.health < p.max_health * 0.25)
+
+        # every 30s, tell the feed WHY heuristics are driving (and announce
+        # recovery the moment the LLM comes back)
+        self._llm_check_timer -= dt
+        if self._llm_check_timer <= 0:
+            self._llm_check_timer = 2.0
+            reason = self.manager.heuristics_reason()
+            if reason:
+                self._llm_was_down = True
+                if self.t >= self._llm_next_notice:
+                    self._llm_next_notice = self.t + 30.0
+                    self.world.log(f"[LLM] heuristics driving: {reason}",
+                                   C.C_ENERGY)
+            elif self._llm_was_down and self.manager.enabled:
+                self._llm_was_down = False
+                avg = self.manager.avg_latency()
+                tail = f" (avg round-trip {avg:.1f}s)" if avg else ""
+                self.world.log(f"[LLM] back online{tail}", C.C_GOOD)
 
         if self.mate is not None:
             self.mate.update(dt, self.world.player.pos)
