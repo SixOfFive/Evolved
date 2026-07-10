@@ -3,10 +3,9 @@
 A 2D top-down Spore-style cell-stage game. Swim, eat, evolve, and outlast rival
 cells driven by a local LLM (Ollama / qwen3:4b).
 
-    python main.py                       # play
+    python main.py                       # play (starts on autopilot; P = take control)
     python main.py --no-llm              # rivals use heuristics only
     python main.py --ai-cells 8          # more rivals
-    python main.py --demo                # AI plays the player cell
     python main.py --screenshot out.png  # headless: save a PNG and exit
 """
 
@@ -94,8 +93,6 @@ def parse_args():
                     help="disable the LLM; rivals use heuristics only")
     ap.add_argument("--ai-cells", type=int, default=C.AI_CELL_COUNT,
                     help="number of rival cells")
-    ap.add_argument("--demo", action="store_true",
-                    help="let an AI brain drive the player cell (hands-off)")
     ap.add_argument("--screenshot", metavar="PATH", default=None,
                     help="headless: simulate then save a PNG to PATH and exit")
     ap.add_argument("--frames", type=int, default=300,

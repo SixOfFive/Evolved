@@ -89,11 +89,10 @@ class Game:
         self.sound = SoundManager()
         self.editor.sound = self.sound
         self._last_player_hp = None
-        self.demo = getattr(args, "demo", False)
-        # autopilot: the AI plays the player cell (LLM if connected, else
-        # heuristics). --demo starts with it on; P toggles it any time.
-        self.autopilot = self.demo
-        self.world = World(self.manager, ai_count=args.ai_cells, demo=self.demo,
+        # the game opens with the AI driving (LLM if connected, heuristics
+        # otherwise); press P to take control. P toggles it back any time.
+        self.autopilot = True
+        self.world = World(self.manager, ai_count=args.ai_cells, demo=True,
                            sound=self.sound)
         self.controller = PlayerController(self.world.player)
         self.camera.snap(self.world.player.pos, self.world.player.radius)
@@ -171,6 +170,8 @@ class Game:
                 self.state = STATE_PLAYING
             else:
                 self.running = False
+        elif event.key == pygame.K_q and self.state == STATE_PAUSED:
+            self.running = False
         elif event.key == pygame.K_TAB:
             self.show_overlay = not self.show_overlay
         elif event.key == pygame.K_r and self.state == STATE_GAMEOVER:
@@ -387,7 +388,7 @@ class Game:
         elif self.state == STATE_PROMPT and self.prompt is not None:
             self._draw_prompt(s)
         elif self.state == STATE_PAUSED:
-            self._overlay_text(s, "PAUSED", "Esc to resume")
+            self._overlay_text(s, "PAUSED", "Esc: resume    Q: quit the game")
         elif self.state == STATE_GAMEOVER:
             p = self.world.player
             stage = {"cell": "cell", "multi": "multicellular",
@@ -465,7 +466,6 @@ class Game:
         if self.world.player.brain is None:
             self.world.player.brain = AIBrain(self.world.player, self.world,
                                               self.manager)
-        self.demo = True
         self.autopilot = True
         for _ in range(frames):
             self.t += dt

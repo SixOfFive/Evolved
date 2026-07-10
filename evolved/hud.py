@@ -221,8 +221,13 @@ class HUD:
         llm = "LLM off"
         lcol = C.C_TEXT_DIM
         if manager.enabled:
-            llm = f"LLM ok:{manager.stats['ok']} fail:{manager.stats['fail']}"
-            lcol = C.C_GOOD if manager.stats["ok"] >= manager.stats["fail"] else C.C_BAD
+            if manager.throttled():
+                llm = f"LLM throttled (429) ok:{manager.stats['ok']}"
+                lcol = C.C_ENERGY
+            else:
+                llm = f"LLM ok:{manager.stats['ok']} fail:{manager.stats['fail']}"
+                lcol = (C.C_GOOD if manager.stats["ok"] >= manager.stats["fail"]
+                        else C.C_BAD)
         status = f"Rivals: {rivals}   FPS: {int(fps)}"
         self._text(surface, status, W - 250, H - 44, self.font_s, C.C_TEXT_DIM)
         self._text(surface, llm, W - 250, H - 26, self.font_s, lcol)

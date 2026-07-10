@@ -64,9 +64,11 @@ python -m pip install -r requirements.txt
 python main.py
 ```
 
-That's it — you spawn as a herbivore cell with a filter mouth, a flagellum, and an eye.
-Swim into green plant chunks to eat. When the HUD says **Press E to evolve**, press `E`,
-swim into the mate that appears, and spend your DNA.
+The game opens on **autopilot** — the AI plays your cell so you can watch the pond come alive.
+Press `P` whenever you're ready to take the controls yourself. You spawn as a herbivore cell with
+a filter mouth, a flagellum, and an eye. Swim into green plant chunks to eat. When the HUD says
+**Press E to evolve**, press `E`, swim into the mate that appears, and spend your DNA. Launching
+the game again automatically replaces a running instance.
 
 ## Startup options
 
@@ -81,7 +83,6 @@ python main.py [options]
 | `--model NAME` | `qwen3:4b` | Ollama model used for rival strategy. Any JSON-capable chat model works. |
 | `--no-llm` | off | Disable the LLM entirely. Rivals run on pure heuristics — still competent, less varied. |
 | `--ai-cells N` | `10` | Number of rival organisms. The world keeps at least 6 alive, respawning newcomers. |
-| `--demo` | off | Start with **autopilot** already on (same as pressing `P` immediately). Good for watching the ecosystem run itself. |
 | `--screenshot PATH` | — | Headless mode: simulate `--frames` frames without a window, save a gameplay PNG to `PATH` plus an editor PNG to `PATH_editor.png`, then exit. Used for testing/CI. |
 | `--frames N` | `300` | How many frames to simulate before `--screenshot` captures. |
 | `--autoquit SECONDS` | `0` (off) | Close the window automatically after N seconds. Used for smoke tests. |
@@ -117,7 +118,8 @@ python main.py --screenshot shot.png --frames 2000   # headless render after ~33
 | `Space` / `E` / `Esc` | (Editor) close and return to the pond. |
 | `Tab` | Toggle the overhead overlay (name, health bar, and HP/total for every organism, yours included). |
 | `R` | (After death) start a new run. |
-| `Esc` | Pause / resume; quit from pause or death screens. |
+| `Esc` | Pause / resume. |
+| `Q` | (While paused) quit the game. |
 
 Eating is automatic — swim your mouth into food you can digest.
 

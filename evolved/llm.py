@@ -13,6 +13,7 @@ import json
 import queue
 import re
 import threading
+import time
 
 import requests
 
@@ -54,7 +55,11 @@ class OllamaClient:
             return False
 
     def chat_json(self, system, user):
-        """Return a parsed JSON dict from the model, or None on any failure."""
+        """Return (parsed dict | None, throttled: bool).
+
+        `throttled` is True when the server answered 429 - the caller should
+        back off instead of retrying immediately.
+        """
         payload = {
             "model": self.model,
             "stream": False,
@@ -72,13 +77,15 @@ class OllamaClient:
         try:
             r = requests.post(self.base + "/api/chat", json=payload,
                               timeout=self.timeout)
+            if r.status_code == 429:
+                return None, True
             if r.status_code != 200:
-                return None
+                return None, False
             data = r.json()
             content = data.get("message", {}).get("content", "")
-            return _extract_json(content)
+            return _extract_json(content), False
         except Exception:
-            return None
+            return None, False
 
 
 class LLMManager:
@@ -100,7 +107,11 @@ class LLMManager:
         self._inflight_lock = threading.Lock()
         self._stop = threading.Event()
         self._threads = []
-        self.stats = {"requests": 0, "ok": 0, "fail": 0}
+        self.stats = {"requests": 0, "ok": 0, "fail": 0, "throttled": 0}
+        # global politeness gate: a 429 from the server pauses ALL workers,
+        # with the pause growing on repeat offenses and resetting on success
+        self._gate = 0.0
+        self._backoff = 6.0
 
     def start(self):
         if not self.enabled:
@@ -153,19 +164,30 @@ class LLMManager:
                 break
         return out
 
+    def throttled(self):
+        return time.time() < self._gate
+
     def _worker(self):
         while not self._stop.is_set():
             try:
                 cell_id, system, user = self._jobs.get(timeout=0.5)
             except queue.Empty:
                 continue
-            result = None
+            # honor the 429 backoff gate before touching the server
+            while not self._stop.is_set() and time.time() < self._gate:
+                time.sleep(0.25)
+            result, throttled = None, False
             try:
-                result = self.client.chat_json(system, user)
+                result, throttled = self.client.chat_json(system, user)
             except Exception:
                 result = None
-            if result is not None:
+            if throttled:
+                self.stats["throttled"] += 1
+                self._gate = time.time() + self._backoff
+                self._backoff = min(60.0, self._backoff * 1.7)
+            elif result is not None:
                 self.stats["ok"] += 1
+                self._backoff = 6.0
             else:
                 self.stats["fail"] += 1
             self._results.put((cell_id, result))
