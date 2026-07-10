@@ -91,7 +91,7 @@ python main.py [options]
 | `--ollama-host HOST` | `192.168.15.38` | Hostname/IP of the Ollama server that drives rival brains. |
 | `--ollama-port PORT` | `21434` | Port of the Ollama server. |
 | `--model NAME` | `qwen3:4b` | Ollama model used for rival strategy. Any JSON-capable chat model works. |
-| `--no-llm` | off | Disable the LLM entirely. Rivals run on pure heuristics — still competent, less varied. |
+| `--no-llm` | off | Start with the LLM off; rivals run on pure heuristics — still competent, less varied. Flip it at runtime with `L` on the pause screen. |
 | `--ai-cells N` | `10` | Number of rival organisms. The world keeps at least 6 alive, respawning newcomers. |
 | `--screenshot PATH` | — | Headless mode: simulate `--frames` frames without a window, save a gameplay PNG to `PATH` plus an editor PNG to `PATH_editor.png`, then exit. Used for testing/CI. |
 | `--frames N` | `300` | How many frames to simulate before `--screenshot` captures. |
@@ -129,6 +129,7 @@ python main.py --screenshot shot.png --frames 2000   # headless render after ~33
 | `Tab` | Toggle the overhead overlay (name, health bar, and HP/total for every organism, yours included). |
 | `R` | (After death) start a new run. |
 | `Esc` | Pause / resume. |
+| `L` | (While paused) switch the AI between **LLM** and **heuristics** at runtime — works even if you launched with `--no-llm`. |
 | `Q` | (While paused) quit the game. |
 
 Eating is automatic — swim your mouth into food you can digest.

@@ -183,6 +183,18 @@ class Game:
                 self.running = False
         elif event.key == pygame.K_q and self.state == STATE_PAUSED:
             self.running = False
+        elif event.key == pygame.K_l and self.state == STATE_PAUSED:
+            if self.manager.enabled:
+                self.manager.disable()
+                self.world.log("[LLM] switched off - heuristics driving "
+                               "(L on the pause screen to re-enable)",
+                               C.C_ENERGY)
+            else:
+                self.manager.enable()
+                self.world.log(f"[LLM] switched on - contacting "
+                               f"{self.manager.client.base}...", C.C_LLM)
+                self._llm_was_down = True   # so recovery gets announced
+                self._llm_next_notice = self.t + 15.0
         elif event.key == pygame.K_TAB:
             self.show_overlay = not self.show_overlay
         elif event.key == pygame.K_r and self.state == STATE_GAMEOVER:
@@ -426,7 +438,12 @@ class Game:
         elif self.state == STATE_PROMPT and self.prompt is not None:
             self._draw_prompt(s)
         elif self.state == STATE_PAUSED:
-            self._overlay_text(s, "PAUSED", "Esc: resume    Q: quit the game")
+            now = "LLM" if self.manager.enabled else "heuristics"
+            nxt = "heuristics" if self.manager.enabled else "LLM"
+            self._overlay_text(
+                s, "PAUSED",
+                f"Esc: resume    L: switch AI to {nxt} (now: {now})    "
+                "Q: quit the game")
         elif self.state == STATE_GAMEOVER:
             self._draw_gameover(s)
 

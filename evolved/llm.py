@@ -124,6 +124,7 @@ class LLMManager:
         self._inflight_lock = threading.Lock()
         self._stop = threading.Event()
         self._threads = []
+        self._started = False
         self.stats = {"requests": 0, "ok": 0, "fail": 0, "throttled": 0}
         # global politeness gate: a 429 from the server pauses ALL workers,
         # with the pause growing on repeat offenses and resetting on success
@@ -137,13 +138,32 @@ class LLMManager:
         self._latencies = []          # last few successful round-trips
 
     def start(self):
-        if not self.enabled:
+        if not self.enabled or self._started:
             return
+        self._started = True
         for i in range(self.WORKERS):
             t = threading.Thread(target=self._worker, daemon=True,
                                  name=f"llm-worker-{i}")
             t.start()
             self._threads.append(t)
+
+    def enable(self):
+        """Turn LLM usage on at runtime (even if --no-llm was set at launch)."""
+        self.enabled = True
+        self.disabled_reason = ""
+        # a clean slate: old errors and backoff belong to another era
+        self._gate = 0.0
+        self._backoff = 6.0
+        self._consec_fail = 0
+        self._last_error = ""
+        self._first_request = None
+        self.start()
+
+    def disable(self, reason="LLM disabled at runtime (L on pause screen)"):
+        """Turn LLM usage off at runtime; heuristics take over."""
+        self.enabled = False
+        self.disabled_reason = reason
+        self.clear_pending()
 
     def clear_pending(self):
         """Drop queued (not yet started) jobs and stale results.
