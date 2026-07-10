@@ -126,10 +126,15 @@ _FLEE_FRAC = {"aggressive": 0.35, "vengeful": 0.45, "cautious": 0.8}
 
 
 class AIBrain:
-    def __init__(self, cell, world, manager, intended_diet=None):
+    def __init__(self, cell, world, manager, intended_diet=None,
+                 evolve_only=False):
         self.cell = cell
         self.world = world
         self.manager = manager
+        # evolve_only: the AI manages upgrades (parts, growth) but never
+        # steers - the human keeps the wheel. Stage advancement stays with
+        # the player's yes/no prompts too.
+        self.evolve_only = evolve_only
         self.intended_diet = intended_diet or random.choices(
             ["herbivore", "carnivore", "omnivore"], weights=[45, 35, 20])[0]
         self.personality = random.choice(list(PERSONALITIES))
@@ -271,7 +276,8 @@ class AIBrain:
             self._llm_timer = C.LLM_POLICY_INTERVAL + random.uniform(-1.0, 1.5)
             self._request_policy()
 
-        self._steer(dt)
+        if not self.evolve_only:
+            self._steer(dt)
 
     # ------------------------------------------------------------------ steer
     def _steer(self, dt):
@@ -408,17 +414,19 @@ class AIBrain:
         if self.awaiting_spawn_choice:
             return  # no strategy yet - wait for the LLM (or the fallback)
 
-        # 0) stage advancement: rivals push on when ready
-        if cell.can_advance_stage():
-            cell.advance_stage()
-            self.world.log(f"{cell.name} evolved into a multicellular organism!",
-                           (200, 160, 255))
-            return
-        if cell.can_evolve_brain():
-            cell.become_fish()
-            self.world.log(f"{cell.name} grew a brain and became a FISH!",
-                           (150, 220, 255))
-            return
+        # 0) stage advancement: rivals push on when ready. In evolve_only
+        # mode this is the player's call - their yes/no prompt handles it.
+        if not self.evolve_only:
+            if cell.can_advance_stage():
+                cell.advance_stage()
+                self.world.log(f"{cell.name} evolved into a multicellular "
+                               "organism!", (200, 160, 255))
+                return
+            if cell.can_evolve_brain():
+                cell.become_fish()
+                self.world.log(f"{cell.name} grew a brain and became a FISH!",
+                               (150, 220, 255))
+                return
 
         # buy at most one part per tick...
         self._buy_one_part()

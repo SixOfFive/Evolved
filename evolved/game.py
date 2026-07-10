@@ -102,6 +102,9 @@ class Game:
         # the game opens with the AI driving (LLM if connected, heuristics
         # otherwise); press P to take control. P toggles it back any time.
         self.autopilot = True
+        # U on the pause screen: the AI keeps managing upgrades (parts and
+        # growth) while the human steers
+        self.auto_evolve = False
         self.world = World(self.manager, ai_count=args.ai_cells, demo=True,
                            sound=self.sound)
         self.controller = PlayerController(self.world.player)
@@ -127,6 +130,7 @@ class Game:
         self.world = World(self.manager, ai_count=self.args.ai_cells,
                            demo=self.autopilot, sound=self.sound)
         self.controller = PlayerController(self.world.player)
+        self._sync_player_brain()
         self.camera.snap(self.world.player.pos, self.world.player.radius)
         self.mate = None
         self.prompt = None
@@ -195,6 +199,14 @@ class Game:
                                f"{self.manager.client.base}...", C.C_LLM)
                 self._llm_was_down = True   # so recovery gets announced
                 self._llm_next_notice = self.t + 15.0
+        elif event.key == pygame.K_u and self.state == STATE_PAUSED:
+            self.auto_evolve = not self.auto_evolve
+            self._sync_player_brain()
+            if self.auto_evolve:
+                self.world.log("AI now handles your upgrades while you drive "
+                               "(U on pause to stop).", C.C_LLM)
+            else:
+                self.world.log("Upgrades back in your hands.", C.C_TEXT_DIM)
         elif event.key == pygame.K_TAB:
             self.show_overlay = not self.show_overlay
         elif event.key == pygame.K_r and self.state == STATE_GAMEOVER:
@@ -222,6 +234,18 @@ class Game:
                 self.world.fx.burst(tail, (170, 220, 235), n=7, speed=120,
                                     size=2.0, life=0.5)
 
+    def _sync_player_brain(self):
+        """Give the player cell the right brain for the current modes."""
+        p = self.world.player
+        if self.autopilot:
+            return  # autopilot owns the brain
+        if self.auto_evolve:
+            diet = p.diet if p.diet != "none" else None
+            p.brain = AIBrain(p, self.world, self.manager,
+                              intended_diet=diet, evolve_only=True)
+        else:
+            p.brain = None
+
     def _toggle_autopilot(self):
         p = self.world.player
         self.autopilot = not self.autopilot
@@ -233,9 +257,11 @@ class Game:
                     else "-> heuristics now control the player")
             self.world.log(f"{mode}  (P to take back control)", C.C_LLM)
         else:
-            p.brain = None
             p.thrust = pygame.Vector2(0, 0)
-            self.world.log("Autopilot off - you have control.", C.C_TEXT_DIM)
+            self._sync_player_brain()
+            tail = (" (AI still handles upgrades)" if self.auto_evolve else "")
+            self.world.log(f"Autopilot off - you have control.{tail}",
+                           C.C_TEXT_DIM)
 
     def _call_mate(self):
         p = self.world.player
@@ -431,7 +457,8 @@ class Game:
             self.hud.draw_overhead(s, self.world, self.camera)
         self.hud.draw_threat_arrows(s, self.world, self.camera, self.t)
         self.hud.draw(s, self.world, self.camera, self.clock.get_fps(),
-                      self.manager, self.t, autopilot=self.autopilot)
+                      self.manager, self.t, autopilot=self.autopilot,
+                      auto_evolve=self.auto_evolve)
 
         if self.state == STATE_EDITOR:
             self.editor.draw(s, self.world.player, self.t)
@@ -443,7 +470,9 @@ class Game:
             self._overlay_text(
                 s, "PAUSED",
                 f"Esc: resume    L: switch AI to {nxt} (now: {now})    "
-                "Q: quit the game")
+                "Q: quit the game\n"
+                f"U: AI handles upgrades while you drive "
+                f"(now: {'ON' if self.auto_evolve else 'OFF'})")
         elif self.state == STATE_GAMEOVER:
             self._draw_gameover(s)
 
@@ -553,8 +582,11 @@ class Game:
         surface.blit(overlay, (0, 0))
         ts = self.hud.font_xl.render(title, True, color)
         surface.blit(ts, ((W - ts.get_width()) // 2, H // 2 - 70))
-        ss = self.hud.font_m.render(subtitle, True, C.C_TEXT)
-        surface.blit(ss, ((W - ss.get_width()) // 2, H // 2 + 6))
+        y = H // 2 + 6
+        for line in subtitle.split("\n"):
+            ss = self.hud.font_m.render(line, True, C.C_TEXT)
+            surface.blit(ss, ((W - ss.get_width()) // 2, y))
+            y += 28
 
     # ------------------------------------------------------- screenshot mode
     def run_screenshot(self, path, frames=300):

@@ -204,7 +204,8 @@ class HUD:
             surface.blit(warn, (wx, 70))
 
     # ----------------------------------------------------------------- HUD
-    def draw(self, surface, world, cam, fps, manager, t, autopilot=False):
+    def draw(self, surface, world, cam, fps, manager, t, autopilot=False,
+             auto_evolve=False):
         p = world.player
         W, H = surface.get_size()
 
@@ -300,6 +301,14 @@ class HUD:
                              (bx - 10, 30, badge.get_width() + 20, 28),
                              border_radius=6)
             surface.blit(badge, (bx, 34))
+        elif auto_evolve:
+            badge = self.font_s.render("AI handles upgrades - you drive",
+                                       True, C.C_LLM)
+            bx = (W - badge.get_width()) // 2
+            pygame.draw.rect(surface, (12, 26, 42),
+                             (bx - 8, 32, badge.get_width() + 16, 22),
+                             border_radius=5)
+            surface.blit(badge, (bx, 35))
 
     def _draw_minimap(self, surface, world, cam, W):
         mw, mh = 200, int(200 * C.WORLD_H / C.WORLD_W)

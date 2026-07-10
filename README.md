@@ -130,6 +130,7 @@ python main.py --screenshot shot.png --frames 2000   # headless render after ~33
 | `R` | (After death) start a new run. |
 | `Esc` | Pause / resume. |
 | `L` | (While paused) switch the AI between **LLM** and **heuristics** at runtime — works even if you launched with `--no-llm`. |
+| `U` | (While paused) let the AI **manage your upgrades** (buying parts, growing) while you keep the wheel. Stage advancement prompts stay yours. |
 | `Q` | (While paused) quit the game. |
 
 Eating is automatic — swim your mouth into food you can digest.
