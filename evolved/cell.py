@@ -72,6 +72,7 @@ class Cell:
         self.diet_meter = 0.0      # +1 herbivore .. -1 carnivore
         self.food_eaten = 0
         self.kills = 0
+        self.lifetime_dna = 0.0    # every point of DNA ever earned
 
         self.electric_cd = C.ELECTRIC_COOLDOWN
         self.did_pulse = False     # set true the frame an electric pulse fires
@@ -80,6 +81,7 @@ class Cell:
         self.dash_cd = 0.0         # seconds until the next dash is ready
         self.speech = ""           # current speech-bubble text
         self.speech_t = 0.0        # seconds the bubble stays up
+        self.zone_speed = 1.0      # biome speed multiplier (weeds slow you)
 
         # brain / controller hooks (set externally)
         self.brain = None
@@ -348,6 +350,7 @@ class Cell:
     # ---------------------------------------------------------------- feeding
     def feed(self, dna, energy, kind):
         self.dna += dna
+        self.lifetime_dna += dna
         self.energy = min(self.max_energy, self.energy + energy)
         # eating heals a little
         self.health = min(self.max_health, self.health + energy * 0.25)
@@ -429,7 +432,7 @@ class Cell:
             diff = (desired - self.angle + math.pi) % math.tau - math.pi
             step = max(-self.turn_rate * dt, min(self.turn_rate * dt, diff))
             self.angle += step
-            target_vel = self.facing() * self.speed * thrust_mag
+            target_vel = self.facing() * self.speed * thrust_mag * self.zone_speed
         else:
             target_vel = pygame.Vector2(0, 0)
         self.vel += (target_vel - self.vel) * min(1.0, C.ACCEL_RESPONSE * dt)

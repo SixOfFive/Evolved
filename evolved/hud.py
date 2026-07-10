@@ -151,6 +151,58 @@ class HUD:
                 pygame.draw.polygon(surface, cell.color, [
                     (sx - 4, by + bh), (sx + 4, by + bh), (sx, by + bh + 6)])
 
+    # ------------------------------------------------------- threat arrows
+    def draw_threat_arrows(self, surface, world, cam, t):
+        """Edge-of-screen arrows toward off-screen predators closing in."""
+        p = world.player
+        if not p.alive:
+            return
+        W, H = surface.get_size()
+        margin = 34
+        for cell in world.cells:
+            if cell is p or not cell.alive:
+                continue
+            armed = cell.can_bite_cells or cell.n_spike or cell.n_sting
+            if not (cell.is_epic
+                    or (cell.radius >= p.radius * 1.15 and armed)):
+                continue
+            dist = (cell.pos - p.pos).length()
+            if dist > (2400 if cell.is_epic else 1100):
+                continue
+            sx, sy = cam.world_to_screen(cell.pos)
+            if -40 <= sx <= W + 40 and -40 <= sy <= H + 40:
+                continue  # already visible - no arrow needed
+            # clamp the arrow to the screen edge along the threat direction
+            dx, dy = sx - W / 2, sy - H / 2
+            scale = min((W / 2 - margin) / abs(dx) if dx else 9e9,
+                        (H / 2 - margin) / abs(dy) if dy else 9e9)
+            ax, ay = W / 2 + dx * scale, H / 2 + dy * scale
+            ang = math.atan2(dy, dx)
+            pulse = 0.6 + 0.4 * math.sin(t * (9 if cell.is_epic else 6))
+            color = C.C_EPIC if cell.is_epic else C.C_BAD
+            color = tuple(min(255, int(c * (0.7 + 0.6 * pulse))) for c in color)
+            size = (22 if cell.is_epic else 15) * (0.85 + 0.15 * pulse)
+            tip = (ax + math.cos(ang) * size * 0.6,
+                   ay + math.sin(ang) * size * 0.6)
+            b1 = (ax + math.cos(ang + 2.55) * size,
+                  ay + math.sin(ang + 2.55) * size)
+            b2 = (ax + math.cos(ang - 2.55) * size,
+                  ay + math.sin(ang - 2.55) * size)
+            pygame.draw.polygon(surface, color, [tip, b1, b2])
+
+        # the worst news in the pond, delivered plainly
+        epic = world.epic
+        if (epic is not None and epic.alive
+                and getattr(epic.brain, "_target", None) is p
+                and int(t * 2) % 2 == 0):
+            warn = self.font_m.render("THE LEVIATHAN HUNTS YOU", True,
+                                      (235, 140, 255))
+            wx = (W - warn.get_width()) // 2
+            pygame.draw.rect(surface, (30, 8, 40),
+                             (wx - 12, 66, warn.get_width() + 24, 30),
+                             border_radius=6)
+            surface.blit(warn, (wx, 70))
+
     # ----------------------------------------------------------------- HUD
     def draw(self, surface, world, cam, fps, manager, t, autopilot=False):
         p = world.player

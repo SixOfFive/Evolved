@@ -44,14 +44,35 @@ class World:
         self.epic = None
         self._epic_timer = C.EPIC_MIN_AGE
         self._epic_life = 0.0
+        self.player_epic_kills = 0
+
+        # --- biomes ---
+        self.trench_c = pygame.Vector2(C.WORLD_W * C.TRENCH_CENTER_FRAC[0],
+                                       C.WORLD_H * C.TRENCH_CENTER_FRAC[1])
+        self.current_band = (C.WORLD_H * C.CURRENT_Y_FRAC[0],
+                             C.WORLD_H * C.CURRENT_Y_FRAC[1])
+        self.weeds = []
+        for _ in range(C.WEED_COUNT):
+            r = random.uniform(*C.WEED_RADIUS)
+            pos = pygame.Vector2(random.uniform(r, C.WORLD_W - r),
+                                 random.uniform(r, C.WORLD_H - r))
+            fronds = []
+            for _ in range(int(r / 11)):
+                a = random.uniform(0, math.tau)
+                d = r * math.sqrt(random.random()) * 0.92
+                fronds.append((pos.x + math.cos(a) * d,
+                               pos.y + math.sin(a) * d,
+                               random.uniform(10, 26),
+                               random.uniform(0, math.tau)))
+            self.weeds.append((pos, r, fronds))
 
         # --- food & meteors first, so spawn-time LLM snapshots see the world ---
         for _ in range(C.PLANT_COUNT):
             self.foods.append(Food(self._rand_pos(), "plant"))
         for _ in range(C.ALGAE_COUNT):
-            self.foods.append(Food(self._rand_pos(), "algae"))
+            self.foods.append(Food(self._rich_pos(), "algae"))
         for _ in range(C.METEOR_COUNT):
-            self.meteors.append(Meteor(self._rand_pos()))
+            self.meteors.append(Meteor(self._rich_pos()))
 
         # --- player ---
         self.player = Cell(self._center_spawn(), is_player=True,
@@ -90,6 +111,7 @@ class World:
         cell = Cell(self._far_spawn(), is_player=False, color=color, name=name)
         brain = AIBrain(cell, self, self.manager)
         cell.brain = brain
+        cell.name = f"{name} ({brain.personality})"
         cell.add_part("flagellum", spend=False)
         # The LLM decides at spawn whether this rival will hunt, harvest, or
         # both; the mouth is equipped when its answer arrives. Without the LLM
@@ -105,6 +127,40 @@ class World:
     def play(self, name, pos=None, volume=1.0):
         if self.sound is not None:
             self.sound.play(name, pos=pos, volume=volume)
+
+    # ---------------------------------------------------------------- biomes
+    def in_weeds(self, pos):
+        for wpos, r, _ in self.weeds:
+            if (pos[0] - wpos.x) ** 2 + (pos[1] - wpos.y) ** 2 < r * r:
+                return True
+        return False
+
+    def in_current(self, pos):
+        return self.current_band[0] <= pos[1] <= self.current_band[1]
+
+    def in_trench(self, pos):
+        return (pygame.Vector2(pos) - self.trench_c).length_squared() \
+            < C.TRENCH_RADIUS ** 2
+
+    def can_see(self, viewer, target):
+        """Weed thickets hide their occupants from AI eyes."""
+        if not self.in_weeds(target.pos):
+            return True
+        if (viewer.pos - target.pos).length() < C.WEED_HIDE_DIST:
+            return True
+        return self.in_weeds(viewer.pos)
+
+    def _trench_point(self):
+        a = random.uniform(0, math.tau)
+        r = C.TRENCH_RADIUS * math.sqrt(random.random())
+        return (min(C.WORLD_W - 30, max(30, self.trench_c.x + math.cos(a) * r)),
+                min(C.WORLD_H - 30, max(30, self.trench_c.y + math.sin(a) * r)))
+
+    def _rich_pos(self):
+        """Spawn point for algae/meteors - the trench is the motherlode."""
+        if random.random() < C.TRENCH_FOOD_BIAS:
+            return self._trench_point()
+        return self._rand_pos()
 
     # --------------------------------------------------------------- logging
     def log(self, text, color=C.C_TEXT):
@@ -140,9 +196,25 @@ class World:
             if cell.brain is not None and cell.alive:
                 cell.brain.update(dt)
 
+        # biome effects: weeds slow you down, the current sweeps you along
+        for cell in self.cells:
+            if not cell.alive:
+                continue
+            cell.zone_speed = C.WEED_SLOW if self.in_weeds(cell.pos) else 1.0
+            if self.in_current(cell.pos):
+                cell.vel.x += C.CURRENT_FORCE * dt
+
         # integrate motion
         for cell in self.cells:
             cell.update(dt)
+
+        # loose food drifts with the current (algae is anchored)
+        lo, hi = self.current_band
+        for f in self.foods:
+            if f.alive and f.kind != "algae" and lo <= f.pos.y <= hi:
+                f.pos.x += C.CURRENT_FOOD_DRIFT * dt
+                if f.pos.x > C.WORLD_W:
+                    f.pos.x -= C.WORLD_W
 
         # entity upkeep
         for f in self.foods:
@@ -408,6 +480,8 @@ class World:
                 if killer is not None and getattr(killer, "alive", False):
                     killer.feed(C.EPIC_DNA_JACKPOT, 60.0, "cell")
                     killer.kills += 1
+                    if killer.is_player:
+                        self.player_epic_kills += 1
                     self.log(f"{killer.name} SLEW THE LEVIATHAN! "
                              f"+{int(C.EPIC_DNA_JACKPOT)} DNA!", C.C_MULTI)
                     self.fx.ripple(cell.pos, C.C_MULTI, max_radius=320,
@@ -438,11 +512,11 @@ class World:
                 self.foods.append(Food(self._rand_pos(), "plant"))
             algae = sum(1 for f in self.foods if f.alive and f.kind == "algae")
             if algae < C.ALGAE_COUNT and random.random() < 0.3:
-                self.foods.append(Food(self._rand_pos(), "algae"))
+                self.foods.append(Food(self._rich_pos(), "algae"))
         # drop the occasional meteor
         live_meteors = sum(1 for m in self.meteors if m.alive)
         if live_meteors < C.METEOR_COUNT and random.random() < 0.004:
-            self.meteors.append(Meteor(self._rand_pos()))
+            self.meteors.append(Meteor(self._rich_pos()))
         # prune dead entities occasionally
         if len(self.foods) > C.PLANT_COUNT + C.ALGAE_COUNT + 500:
             self.foods = [f for f in self.foods if f.alive]
@@ -513,6 +587,41 @@ class World:
         self.play("epic", volume=1.0)
 
     # ----------------------------------------------------------------- draw
+    def draw_zones(self, surface, cam, t):
+        """Biomes: the dark trench, the flowing current, the weed thickets."""
+        # trench: a darker disc of deep water with a faint rim
+        if cam.is_visible(self.trench_c, C.TRENCH_RADIUS + 40):
+            sx, sy = cam.world_to_screen(self.trench_c)
+            r = int(C.TRENCH_RADIUS * cam.zoom)
+            pygame.draw.circle(surface, C.C_TRENCH, (sx, sy), r)
+            pygame.draw.circle(surface, (16, 34, 58), (sx, sy), r,
+                               max(1, int(2 * cam.zoom)))
+        # current: drifting streaks across the band
+        lo, hi = self.current_band
+        mid = (lo + hi) / 2
+        if cam.is_visible((cam.center.x, mid), (hi - lo)):
+            for k in range(16):
+                x = (k * 431.7 + t * 120) % C.WORLD_W
+                y = lo + ((k * 953.3) % (hi - lo))
+                a = cam.world_to_screen((x, y))
+                b = cam.world_to_screen((x + 110, y))
+                pygame.draw.line(surface, (28, 58, 88), a, b,
+                                 max(1, int(2 * cam.zoom)))
+        # weeds: dark beds with gently swaying fronds
+        for wpos, r, fronds in self.weeds:
+            if not cam.is_visible(wpos, r + 30):
+                continue
+            sx, sy = cam.world_to_screen(wpos)
+            pygame.draw.circle(surface, C.C_WEED_DARK, (sx, sy),
+                               max(2, int(r * cam.zoom)))
+            for fx_, fy_, ln, ph in fronds:
+                base = cam.world_to_screen((fx_, fy_))
+                sway = math.sin(t * 1.7 + ph) * 0.5
+                tip = cam.world_to_screen((fx_ + math.sin(sway) * ln,
+                                           fy_ - math.cos(sway) * ln))
+                pygame.draw.line(surface, C.C_WEED, base, tip,
+                                 max(1, int(2 * cam.zoom)))
+
     def draw_entities(self, surface, cam, t):
         for f in self.foods:
             if f.alive:

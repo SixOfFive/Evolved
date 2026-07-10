@@ -119,6 +119,54 @@ def _build_all():
     return fx
 
 
+def _build_music():
+    """A seamless ~24s underwater ambient loop.
+
+    Four 6-second sections drift between minor-feeling chord roots, each
+    voiced as root + fifth + octave sines with a slow amplitude swell, over
+    a one-pole-lowpassed noise 'water bed'. Synthesized at half the sample
+    rate (bass content only) and doubled up, then the tail is crossfaded
+    into the head so the loop point is inaudible.
+    """
+    half = SR // 2
+    total = 26.0          # 24s loop + 2s tail folded into the head
+    n = int(half * total)
+    buf = array.array("f", bytes(4 * n))
+    roots = [110.0, 87.31, 98.0, 130.81]
+    sec_len = 6.0
+    nz = 0.0
+    for i in range(n):
+        t = i / half
+        sec = int(t / sec_len) % 4
+        frac = (t % sec_len) / sec_len
+        xf = max(0.0, (frac - 0.72) / 0.28)   # crossfade into the next chord
+        s = 0.0
+        for root, gain in ((roots[sec], 1.0 - xf), (roots[(sec + 1) % 4], xf)):
+            if gain <= 0.0:
+                continue
+            s += gain * (0.50 * math.sin(2 * math.pi * root * t)
+                         + 0.26 * math.sin(2 * math.pi * root * 1.5 * t)
+                         + 0.15 * math.sin(2 * math.pi * root * 2.0 * t))
+        # slow swell + shimmering detune
+        s *= 0.72 + 0.28 * math.sin(2 * math.pi * 0.045 * t)
+        # water bed: heavily lowpassed noise
+        nz += (random.uniform(-1, 1) - nz) * 0.02
+        s += nz * 0.35
+        buf[i] = s * 0.30
+    # fold the 2s tail over the head so restarting is seamless
+    loop_n = int(half * 24.0)
+    tail = n - loop_n
+    for i in range(tail):
+        w = i / tail
+        buf[i] = buf[i] * w + buf[loop_n + i] * (1.0 - w)
+    # back up to the mixer rate by sample doubling (content is all bass)
+    out = array.array("f", bytes(4 * loop_n * 2))
+    for i in range(loop_n):
+        out[2 * i] = buf[i]
+        out[2 * i + 1] = buf[i]
+    return out
+
+
 def _to_sound(fbuf):
     """Float buffer -> pygame Sound, honoring the mixer's actual format."""
     init = pygame.mixer.get_init()
@@ -143,11 +191,18 @@ class SoundManager:
         self._last = {}
         self._sounds = {}
         self._heart_channel = None
+        self._music_channel = None
         if not self.enabled:
             print("[Evolved] no audio device - running silent.")
             return
         for name, variants in _build_all().items():
             self._sounds[name] = [_to_sound(v) for v in variants]
+        self._music = _to_sound(_build_music())
+
+    def start_music(self):
+        if self.enabled and self._music_channel is None:
+            self._music.set_volume(0.35 * _MASTER)
+            self._music_channel = self._music.play(loops=-1)
 
     def play(self, name, pos=None, volume=1.0):
         """Play an effect; `pos` attenuates it by distance from the camera."""

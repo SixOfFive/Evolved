@@ -6,6 +6,7 @@ import os
 import pygame
 
 from . import config as C
+from . import records
 from .ai import AIBrain
 from .camera import Camera
 from .world import World
@@ -87,6 +88,7 @@ class Game:
         # (sound manager is created below and handed to the editor + world)
         self.camera = Camera(*self.screen.get_size())
         self.sound = SoundManager()
+        self.sound.start_music()
         self.editor.sound = self.sound
         self._last_player_hp = None
         # the game opens with the AI driving (LLM if connected, heuristics
@@ -107,6 +109,7 @@ class Game:
         self.advance_declined = False # player said "not yet" to multicellular
         self.brain_declined = False   # player said "not yet" to the brain
         self._retry_timer = 2.0       # autopilot auto-retry countdown on death
+        self._death_summary = None    # (run_stats, records, new_flags)
 
     # ------------------------------------------------------------- lifecycle
     def _new_world(self):
@@ -363,6 +366,13 @@ class Game:
         if self.world.player_dead:
             self.state = STATE_GAMEOVER
             self._retry_timer = 2.0
+            p = self.world.player
+            run = {"survived": p.time_alive, "stage": p.stage,
+                   "level": p.growth_level, "kills": p.kills,
+                   "eaten": p.food_eaten, "dna": p.lifetime_dna,
+                   "leviathans": self.world.player_epic_kills}
+            rec, new = records.update_on_death(p, self.world.player_epic_kills)
+            self._death_summary = (run, rec, new)
         elif self.mate is None:
             # first time a stage bar fills mid-swim, offer what comes next
             p = self.world.player
@@ -375,11 +385,13 @@ class Game:
     def _draw(self):
         s = self.screen
         self.hud.draw_background(s, self.camera, self.t)
+        self.world.draw_zones(s, self.camera, self.t)
         self.world.draw_entities(s, self.camera, self.t)
         if self.mate is not None:
             self.mate.draw(s, self.camera, self.t)
         if self.show_overlay:
             self.hud.draw_overhead(s, self.world, self.camera)
+        self.hud.draw_threat_arrows(s, self.world, self.camera, self.t)
         self.hud.draw(s, self.world, self.camera, self.clock.get_fps(),
                       self.manager, self.t, autopilot=self.autopilot)
 
@@ -390,16 +402,7 @@ class Game:
         elif self.state == STATE_PAUSED:
             self._overlay_text(s, "PAUSED", "Esc: resume    Q: quit the game")
         elif self.state == STATE_GAMEOVER:
-            p = self.world.player
-            stage = {"cell": "cell", "multi": "multicellular",
-                     "fish": "fish"}[p.stage]
-            tail = ("   R: try again   Esc: quit" if not self.autopilot else
-                    f"   Auto-retry in {max(0, math.ceil(self._retry_timer))}s...")
-            self._overlay_text(
-                s, "You were consumed",
-                f"Survived {int(p.time_alive)}s as a {stage} (level {p.growth_level})"
-                f"  -  {p.food_eaten} eaten." + tail,
-                color=C.C_BAD)
+            self._draw_gameover(s)
 
     def _draw_prompt(self, surface):
         W, H = surface.get_size()
@@ -447,6 +450,58 @@ class Game:
             surface.blit(ls, (rect.centerx - ls.get_width() // 2,
                               rect.centery - ls.get_height() // 2))
         self._prompt_rects = (yes_rect, no_rect)
+
+    def _draw_gameover(self, surface):
+        W, H = surface.get_size()
+        overlay = pygame.Surface((W, H), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 170))
+        surface.blit(overlay, (0, 0))
+        title = self.hud.font_xl.render("You were consumed", True, C.C_BAD)
+        surface.blit(title, ((W - title.get_width()) // 2, H // 2 - 220))
+
+        if self._death_summary is None:
+            return
+        run, rec, new = self._death_summary
+        star = "  * NEW RECORD *"
+        left = [
+            ("THIS RUN", None),
+            (f"Survived {int(run['survived'])}s"
+             + (star if "survival" in new else ""), C.C_TEXT),
+            (f"Reached {records.stage_name(run['stage'])} level {run['level']}"
+             + (star if "stage" in new or "fish" in new else ""), C.C_TEXT),
+            (f"Kills: {run['kills']}", C.C_TEXT),
+            (f"Food eaten: {run['eaten']}", C.C_TEXT),
+            (f"DNA earned: {int(run['dna'])}"
+             + (star if "dna" in new else ""), C.C_TEXT),
+            (f"Leviathans slain: {run['leviathans']}", C.C_TEXT),
+        ]
+        right = [
+            ("ALL-TIME", None),
+            (f"Best survival: {int(rec['best_survival'])}s", C.C_TEXT_DIM),
+            (f"Best stage: {records.stage_name(rec['best_stage'])} "
+             f"level {rec['best_level']}", C.C_TEXT_DIM),
+            (f"Best fish level: {rec['best_fish_level']}", C.C_TEXT_DIM),
+            (f"Best DNA in a run: {int(rec['best_dna'])}", C.C_TEXT_DIM),
+            (f"Total kills: {rec['total_kills']}", C.C_TEXT_DIM),
+            (f"Leviathans slain: {rec['total_leviathans']}", C.C_TEXT_DIM),
+            (f"Runs: {rec['runs']}", C.C_TEXT_DIM),
+        ]
+        for col_x, rows in ((W // 2 - 330, left), (W // 2 + 60, right)):
+            y = H // 2 - 140
+            for text, color in rows:
+                if color is None:
+                    ts = self.hud.font_m.render(text, True, C.C_MULTI)
+                else:
+                    hot = star in text
+                    ts = self.hud.font_s.render(text, True,
+                                                C.C_ENERGY if hot else color)
+                surface.blit(ts, (col_x, y))
+                y += 26 if color is None else 22
+
+        tail = ("R: try again    Esc: quit" if not self.autopilot else
+                f"Auto-retry in {max(0, math.ceil(self._retry_timer))}s...")
+        ts = self.hud.font_m.render(tail, True, C.C_TEXT)
+        surface.blit(ts, ((W - ts.get_width()) // 2, H // 2 + 90))
 
     def _overlay_text(self, surface, title, subtitle, color=C.C_TEXT):
         W, H = surface.get_size()

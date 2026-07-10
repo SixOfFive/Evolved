@@ -21,8 +21,18 @@ the previous instance.
 
 Beware the **LEVIATHAN**: once the pond matures, a screen-dominating epic predator occasionally
 rises from the deep for a while, hunting the largest thing it can find. Slaying it pays a
-legendary DNA jackpot. Watch the minimap. And keep an eye on the rivals' **speech bubbles** —
-what they say comes straight from the LLM's actual reasoning.
+legendary DNA jackpot. Red edge-of-screen arrows warn you of unseen predators (purple for the
+Leviathan — and a flashing banner when *you* are its target). Keep an eye on the rivals'
+**speech bubbles** — what they say comes straight from the LLM's actual reasoning — and their
+**personalities**: every rival spawns aggressive, cautious, greedy, vengeful, territorial, or
+curious, shown in its name tag and injected into its prompts.
+
+The pond has **biomes**: weed thickets slow you down but hide you from AI eyes (sanctuaries for
+the hunted), a current channel sweeps swimmers and loose food eastward, and the dark **trench**
+holds the richest algae and meteors — but the Leviathan lurks there. An ambient underwater
+soundtrack (synthesized, like everything else) plays throughout, and every death updates
+**all-time records** (best survival, best fish level, total Leviathans slain...) shown on the
+death screen and kept in `records.json`.
 
 ![A level-8 fish ruling the pond](docs/fish_gameplay.png)
 

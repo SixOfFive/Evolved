@@ -50,6 +50,8 @@ class EpicBrain:
             for o in self.world.cells:
                 if o is cell or not o.alive or o.is_epic:
                     continue
+                if not self.world.can_see(cell, o):
+                    continue
                 d = (o.pos - cell.pos).length()
                 if d > 1700:
                     continue
@@ -58,9 +60,15 @@ class EpicBrain:
                     best, best_score = o, score
             self._target = best
             if best is None:
-                self._cruise = pygame.Vector2(
-                    random.uniform(400, C.WORLD_W - 400),
-                    random.uniform(400, C.WORLD_H - 400))
+                # nothing worth chasing - lurk around the dark trench
+                if random.random() < 0.7:
+                    self._cruise = (pygame.Vector2(self.world.trench_c)
+                                    + pygame.Vector2(random.uniform(-450, 450),
+                                                     random.uniform(-450, 450)))
+                else:
+                    self._cruise = pygame.Vector2(
+                        random.uniform(400, C.WORLD_W - 400),
+                        random.uniform(400, C.WORLD_H - 400))
         aim = self._target.pos if self._target is not None else self._cruise
         d = pygame.Vector2(aim) - cell.pos
         if d.length_squared() > 1:
@@ -104,6 +112,18 @@ _MULTI_PRIORITY = ["segment", "muscle", "stinger", "armor", "sensor",
 _STRATEGY_TO_DIET = {"hunt": "carnivore", "harvest": "herbivore",
                      "both": "omnivore"}
 
+# Each rival gets a temperament, injected into its prompts and reflected in
+# its reflexes. Same model, visibly different characters.
+PERSONALITIES = {
+    "aggressive": "you pick fights and hunt whenever possible",
+    "cautious": "you avoid all risk and flee at the first sign of danger",
+    "greedy": "food, algae and meteors matter more to you than anything",
+    "vengeful": "you remember who hurt you and you strike back",
+    "territorial": "you defend your patch of the pond and rarely stray",
+    "curious": "you roam widely and investigate everything you sense",
+}
+_FLEE_FRAC = {"aggressive": 0.35, "vengeful": 0.45, "cautious": 0.8}
+
 
 class AIBrain:
     def __init__(self, cell, world, manager, intended_diet=None):
@@ -112,7 +132,9 @@ class AIBrain:
         self.manager = manager
         self.intended_diet = intended_diet or random.choices(
             ["herbivore", "carnivore", "omnivore"], weights=[45, 35, 20])[0]
-        self.goal = "forage"
+        self.personality = random.choice(list(PERSONALITIES))
+        self.flee_frac = _FLEE_FRAC.get(self.personality, 0.6)
+        self.goal = "hunt" if self.personality == "aggressive" else "forage"
         self.wishlist = []          # part ids the LLM wants next
         self.want_grow = False
         self.reason = ""
@@ -141,8 +163,9 @@ class AIBrain:
         self.awaiting_spawn_choice = True
         self._spawn_choice_timer = 8.0   # heuristic fallback deadline
         state = self._snapshot()
-        if self.manager.request(self.cell.id, _SPAWN_PROMPT,
-                                json.dumps(state)):
+        prompt = (_SPAWN_PROMPT + f" Your personality: {self.personality} - "
+                  f"{PERSONALITIES[self.personality]}.")
+        if self.manager.request(self.cell.id, prompt, json.dumps(state)):
             self.world.log(f"-> LLM [{self.cell.name}]: hunt, harvest or both?",
                            C.C_LLM)
         else:
@@ -170,6 +193,8 @@ class AIBrain:
                 continue
             if not predicate(other):
                 continue
+            if not self.world.can_see(self.cell, other):
+                continue  # hidden in the weeds
             d2 = (other.pos - self.cell.pos).length_squared()
             if d2 < bestd:
                 best, bestd = other, d2
@@ -256,13 +281,19 @@ class AIBrain:
         self._brake = max(0.0, self._brake - dt)
 
         # reflex: whoever is actively hurting us comes first - tail chewers
-        # can be smaller than us and would never register as "predators"
+        # can be smaller than us and would never register as "predators".
+        # How soon we run depends on personality; the vengeful hit back.
         la = getattr(cell, "last_attacker", None)
         if (la is not None and getattr(la, "alive", False)
-                and cell.time_alive - cell.last_hit_time < 1.5
-                and cell.health < cell.max_health * 0.6):
-            self._flee_from(la.pos)
-            return
+                and cell.time_alive - cell.last_hit_time < 1.5):
+            if (self.personality == "vengeful" and cell.can_bite_cells
+                    and cell.health > cell.max_health * 0.5
+                    and la.radius < cell.radius * 1.25):
+                self._seek(la.pos, dt)   # revenge!
+                return
+            if cell.health < cell.max_health * self.flee_frac:
+                self._flee_from(la.pos)
+                return
 
         # reflex: a close, bigger threat overrides everything else
         threat = self._nearest_predator(detect * 0.7)
@@ -471,7 +502,9 @@ class AIBrain:
         if not self.manager.enabled or self.manager.busy(self.cell.id):
             return
         state = self._snapshot()
-        if self.manager.request(self.cell.id, _SYSTEM_PROMPT, json.dumps(state)):
+        prompt = (_SYSTEM_PROMPT + f" Your personality: {self.personality} - "
+                  f"{PERSONALITIES[self.personality]}.")
+        if self.manager.request(self.cell.id, prompt, json.dumps(state)):
             what = ("control the player" if self.cell.is_player
                     else "what's my move?")
             self.world.log(f"-> LLM [{self.cell.name}]: {what}", C.C_LLM)

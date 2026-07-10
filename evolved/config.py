@@ -127,6 +127,23 @@ VACUUM_PULL = 170.0       # px/s base suction speed (edge of the range)
 CONTACT_PUSH = 260.0      # separation force when two cells overlap
 EAT_SIZE_RATIO = 1.12     # you can bite prey whose radius <= yours * this
 
+# ---------------------------------------------------------------------------
+# Biomes
+# ---------------------------------------------------------------------------
+WEED_COUNT = 7
+WEED_RADIUS = (170, 330)
+WEED_SLOW = 0.62          # speed multiplier while inside a weed thicket
+WEED_HIDE_DIST = 170      # AI can't see prey hidden in weeds beyond this
+CURRENT_Y_FRAC = (0.44, 0.54)  # the horizontal current band (fractions of H)
+CURRENT_FORCE = 300.0     # px/s^2 push (+x) on anything swimming in it
+CURRENT_FOOD_DRIFT = 55.0 # px/s drift of loose food in the current
+TRENCH_CENTER_FRAC = (0.78, 0.72)
+TRENCH_RADIUS = 680.0
+TRENCH_FOOD_BIAS = 0.5    # fraction of algae/meteors that spawn in the trench
+C_WEED = (34, 96, 58)
+C_WEED_DARK = (10, 30, 22)
+C_TRENCH = (2, 8, 18)
+
 # Dash: a quick burst of speed on Space
 DASH_COST = 14.0          # energy per dash
 DASH_IMPULSE = 430.0      # instant velocity boost
