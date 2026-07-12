@@ -257,8 +257,9 @@ class HUD:
                              (12, 214, prompt.get_width() + 20, 30), border_radius=5)
             surface.blit(prompt, (22, 219))
 
-        # ---- minimap ----
-        self._draw_minimap(surface, world, cam, W)
+        # ---- minimap + leaderboard under it ----
+        map_bottom = self._draw_minimap(surface, world, cam, W)
+        self._draw_leaderboard(surface, world, W, map_bottom)
 
         # ---- event log ----
         ey = H - 26
@@ -310,6 +311,66 @@ class HUD:
                              border_radius=5)
             surface.blit(badge, (bx, 35))
 
+    # ------------------------------------------------------- leaderboard
+    @staticmethod
+    def leaderboard_rows(world, top_n=10):
+        """(rank, cell) rows: the top N plus the player, always.
+
+        Ranked by evolutionary progress: stage, then level, then lifetime
+        DNA. The Leviathan is an event, not a competitor - excluded.
+        """
+        stage_rank = {"cell": 0, "multi": 1, "fish": 2}
+        ranked = sorted(
+            (c for c in world.cells if c.alive and not c.is_epic),
+            key=lambda c: (stage_rank[c.stage], c.growth_level,
+                           c.lifetime_dna),
+            reverse=True)
+        rows = [(i + 1, c) for i, c in enumerate(ranked[:top_n])]
+        for i, c in enumerate(ranked):
+            if c.is_player and i >= top_n:
+                rows.append((i + 1, c))
+                break
+        return rows
+
+    def _draw_leaderboard(self, surface, world, W, top_y):
+        rows = self.leaderboard_rows(world)
+        if not rows:
+            return
+        mw = 200
+        mx = W - mw - 12
+        row_h = 17
+        panel_h = 22 + len(rows) * row_h + 6
+        panel = pygame.Surface((mw, panel_h), pygame.SRCALPHA)
+        panel.fill((8, 18, 32, 200))
+        surface.blit(panel, (mx, top_y + 6))
+        pygame.draw.rect(surface, C.C_PANEL_LINE, (mx, top_y + 6, mw, panel_h), 1)
+        surface.blit(self.font_s.render("LEADERBOARD", True, C.C_TEXT_DIM),
+                     (mx + 8, top_y + 9))
+        stage_tag = {"cell": "C", "multi": "M", "fish": "F"}
+        y = top_y + 26
+        last_rank = 0
+        for rank, c in rows:
+            if rank > last_rank + 1:
+                # the player fell outside the top 10 - visual break
+                pygame.draw.line(surface, C.C_PANEL_LINE,
+                                 (mx + 8, y + 1), (mx + mw - 8, y + 1))
+                y += 4
+            last_rank = rank
+            if c.is_player:
+                pygame.draw.rect(surface, (16, 52, 46),
+                                 (mx + 2, y - 1, mw - 4, row_h))
+                color = C.C_PLAYER
+                name = "You"
+            else:
+                color = C.C_TEXT_DIM if rank > 1 else C.C_MULTI
+                name = c.name
+            left = self.font_s.render(f"{rank}. {name[:17]}", True, color)
+            tag = self.font_s.render(
+                f"{stage_tag[c.stage]}{c.growth_level}", True, color)
+            surface.blit(left, (mx + 8, y))
+            surface.blit(tag, (mx + mw - 10 - tag.get_width(), y))
+            y += row_h
+
     def _draw_minimap(self, surface, world, cam, W):
         mw, mh = 200, int(200 * C.WORLD_H / C.WORLD_W)
         mx, my = W - mw - 12, 12
@@ -343,3 +404,4 @@ class HUD:
         vx = mx + (cam.center.x / C.WORLD_W * mw) - vw / 2
         vy = my + (cam.center.y / C.WORLD_H * mh) - vh / 2
         pygame.draw.rect(surface, (200, 220, 240), (vx, vy, vw, vh), 1)
+        return my + mh

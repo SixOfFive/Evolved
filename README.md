@@ -29,7 +29,9 @@ curious, shown in its name tag and injected into its prompts.
 
 The pond has **biomes**: weed thickets slow you down but hide you from AI eyes (sanctuaries for
 the hunted), a current channel sweeps swimmers and loose food eastward, and the dark **trench**
-holds the richest algae and meteors — but the Leviathan lurks there. An ambient underwater
+holds the richest algae and meteors — but the Leviathan lurks there. A live **leaderboard** under
+the minimap ranks everyone by evolutionary progress (stage, level, lifetime DNA) — you're always
+on it, highlighted, even when you've fallen out of the top 10. An ambient underwater
 soundtrack (synthesized, like everything else) plays throughout, and every death updates
 **all-time records** (best survival, best fish level, total Leviathans slain...) shown on the
 death screen and kept in `records.json`.
