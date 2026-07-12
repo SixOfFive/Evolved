@@ -11,30 +11,14 @@ larger, tougher, and harder-hitting, forever.
 
 You are not alone in the water: rival organisms are driven by a **local LLM** (Ollama / `qwen3:4b`)
 and play the same game you do — they choose whether to hunt, harvest, or both, they forage and flee,
-they buy parts, they grow, and they climb the same three stages. Late game, the pond belongs to
-whichever apex fish out-evolved the others. Ideally you.
+they buy parts, they grow, and they climb the same three stages. Each rival has a **personality**,
+and they occasionally speak their mind in bubbles drawn straight from the model's reasoning. Late
+game, the pond belongs to whichever apex fish out-evolved the others. Ideally you.
 
-All graphics are **drawn procedurally in Python** — no image assets, nothing to license. Everything
-you see is shapes and math at runtime — and everything you *hear* too: all 17 sound effects are
-synthesized from raw oscillators at startup. Launching the game a second time automatically closes
-the previous instance.
-
-Beware the **LEVIATHAN**: once the pond matures, a screen-dominating epic predator occasionally
-rises from the deep for a while, hunting the largest thing it can find. Slaying it pays a
-legendary DNA jackpot. Red edge-of-screen arrows warn you of unseen predators (purple for the
-Leviathan — and a flashing banner when *you* are its target). Keep an eye on the rivals'
-**speech bubbles** — what they say comes straight from the LLM's actual reasoning — and their
-**personalities**: every rival spawns aggressive, cautious, greedy, vengeful, territorial, or
-curious, shown in its name tag and injected into its prompts.
-
-The pond has **biomes**: weed thickets slow you down but hide you from AI eyes (sanctuaries for
-the hunted), a current channel sweeps swimmers and loose food eastward, and the dark **trench**
-holds the richest algae and meteors — but the Leviathan lurks there. A live **leaderboard** under
-the minimap ranks everyone by evolutionary progress (stage, level, lifetime DNA) — you're always
-on it, highlighted, even when you've fallen out of the top 10. An ambient underwater
-soundtrack (synthesized, like everything else) plays throughout, and every death updates
-**all-time records** (best survival, best fish level, total Leviathans slain...) shown on the
-death screen and kept in `records.json`.
+Everything is **generated in Python at runtime** — no external assets, nothing to license. All the
+art is drawn from shapes and math, all **17 sound effects plus the ambient soundtrack** are
+synthesized from raw oscillators at startup, and launching the game a second time automatically
+closes the previous instance.
 
 ![A level-8 fish ruling the pond](docs/fish_gameplay.png)
 
@@ -53,7 +37,9 @@ death screen and kept in `records.json`.
   - [Food](#food)
   - [Parts catalog](#parts-catalog)
   - [Combat](#combat)
-- [The LLM rivals](#the-llm-rivals)
+- [The pond: biomes, the Leviathan, and the leaderboard](#the-pond-biomes-the-leviathan-and-the-leaderboard)
+- [AI, autopilot, and the LLM](#ai-autopilot-and-the-llm)
+- [Sound](#sound)
 - [Project layout](#project-layout)
 - [Tuning](#tuning)
 - [Troubleshooting](#troubleshooting)
@@ -76,11 +62,12 @@ python -m pip install -r requirements.txt
 python main.py
 ```
 
-The game opens on **autopilot** — the AI plays your cell so you can watch the pond come alive.
-Press `P` whenever you're ready to take the controls yourself. You spawn as a herbivore cell with
-a filter mouth, a flagellum, and an eye. Swim into green plant chunks to eat. When the HUD says
-**Press E to evolve**, press `E`, swim into the mate that appears, and spend your DNA. Launching
-the game again automatically replaces a running instance.
+The game opens on **autopilot** — the AI plays your cell so you can watch the pond come alive. Press
+`P` whenever you're ready to take the controls yourself (or `Esc` then `U` to keep driving while the
+AI just manages your upgrades). You spawn as a herbivore cell with a filter mouth, a flagellum, and
+an eye. Swim into green plant chunks to eat. When the HUD says **Press E to evolve**, press `E`, swim
+into the mate that appears, and spend your DNA. Launching the game again automatically replaces a
+running instance.
 
 ## Startup options
 
@@ -108,10 +95,9 @@ Environment variables:
 Examples:
 
 ```bash
-python main.py --ai-cells 10                 # a crowded pond
+python main.py --ai-cells 20                 # a crowded pond
 python main.py --no-llm                      # offline / no Ollama available
 python main.py --model qwen2.5:7b            # try a different local model
-python main.py --demo --ai-cells 10          # sit back and watch evolution happen
 python main.py --screenshot shot.png --frames 2000   # headless render after ~33s of sim
 ```
 
@@ -124,16 +110,17 @@ python main.py --screenshot shot.png --frames 2000   # headless render after ~33
 | *(ram another organism)* | Attack on collision — automatic, using whatever offense you have (jaw, spikes, stingers, poison...). |
 | `E` | Call a mate. Swim into it to reproduce, which opens the **Evolution Editor**. (Press `E` again to skip the swim.) |
 | `M` | Advance to the next stage, any time your evolution bar is full. |
-| `P` | Toggle **autopilot**: the AI plays your organism (using the LLM when connected, heuristics otherwise) — it forages, fights, evolves, answers stage prompts, and auto-retries 2 s after death. Press again to take back control. |
 | `Y` / `N` | Answer a stage-advancement question. |
-| `1`–`9`, `Q W T Y U I` | (Editor) buy parts by hotkey. |
-| `Space` / `E` / `Esc` | (Editor) close and return to the pond. |
+| `P` | Toggle **autopilot**: the AI plays your organism (using the LLM when connected, heuristics otherwise) — it forages, fights, evolves, answers stage prompts, and auto-retries 2 s after death. Press again to take back control. |
 | `Tab` | Toggle the overhead overlay (name, health bar, and HP/total for every organism, yours included). |
-| `R` | (After death) start a new run. |
 | `Esc` | Pause / resume. |
 | `L` | (While paused) switch the AI between **LLM** and **heuristics** at runtime — works even if you launched with `--no-llm`. |
 | `U` | (While paused) let the AI **manage your upgrades** (buying parts, growing) while you keep the wheel. Stage advancement prompts stay yours. |
 | `Q` | (While paused) quit the game. |
+| `R` | (After death) start a new run. |
+| Editor: `1`–`9`, `Q` `W` `T` `Y` `U` `I` | Buy the corresponding part by hotkey. |
+| Editor: click a part chip | Remove one of that part and refund its DNA. |
+| Editor: `Space` / `E` / `Esc` | Close and return to the pond. |
 
 Eating is automatic — swim your mouth into food you can digest.
 
@@ -147,7 +134,7 @@ level, size, health, and part slots. Filling a stage's five-level bar puts the n
 
 Energy drains constantly (faster while swimming); running empty starves your health down, and eating
 well regenerates it. If your health hits zero you die and burst into meat chunks — and so does
-everyone else. Death is a restart (`R`).
+everyone else. Death rolls your run into the all-time records and offers a restart (`R`).
 
 ### The three stages
 
@@ -155,7 +142,7 @@ everyone else. Death is a restart (`R`).
 |---|---|---|
 | **Cell** | You start here. | Classic microbe life: dodge bigger cells, eat what your mouth allows, collect part meteors, grow five levels. |
 | **Multicellular** | Fill the cell bar → the game **asks** (yes/no). | You sprout a chain of trailing body segments and unlock tissue parts: segments, muscles, sensors, stingers, armor, photo cells. Bigger foods (algae) open up, much smaller prey can be swallowed whole, and your head generates **suction** — edible food within 3× your head radius is drawn to your mouth, speeding up as it gets close; swim away and it stops where it was. |
-| **Fish** | Fill the multicellular bar → choose to **evolve a brain**. | The endless endgame. Pectoral fins, a forked tail, and no level cap: each level costs more DNA and grants more size (up to a cap), more health, and **+7% outgoing damage — uncapped, forever**. |
+| **Fish** | Fill the multicellular bar → choose to **evolve a brain**. | The endless endgame. Pectoral fins, a forked tail, and no level cap: each level costs more DNA and grants more size (up to a 115 px cap), more health (+26 HP/level), and **+7% outgoing damage — uncapped, forever**. |
 
 Stage advancement is always **your choice**:
 
@@ -181,16 +168,17 @@ Your mouth parts determine your diet, and your diet determines your food:
 |---|---|---|---|---|
 | Plant | small green mote | 2.4 | 13 | Everywhere; constantly restocked. |
 | Meat | red chunk | 3.2 | 19 | Dropped by deaths; decays after ~22 s. |
-| Algae | large green cluster | 7 | 34 | Plant-eaters only, and you must be size 24+ (late cell stage or beyond). |
-| Part meteor | purple shard | 11 | 8 | Anyone can crack one: bonus DNA **and it unlocks a random part** you may not have earned yet. |
-| Smaller organisms | — | varies | varies | Bite them down, or swallow whole anything under ~45% of your size (carnivore/omnivore). |
+| Algae | large green cluster | 7 | 34 | Plant-eaters only, and you must be size 24+ (late cell stage or beyond). Concentrated in the trench. |
+| Part meteor | purple shard | 11 | 8 | Anyone can crack one: bonus DNA **and it unlocks a random part** you may not have earned yet. Concentrated in the trench. |
+| Smaller organisms | — | varies | varies | Bite them down, or swallow whole anything under 45% of your size (carnivore/omnivore). |
 
 ### Parts catalog
 
 Bought in the editor with DNA; attached parts show as grouped chips ("25x Stinger") and clicking a
 chip removes one of that part with a full refund. Slots come from your level, your body segments,
 and every stage you've completed (slots never regress). **Duplicates stack**: every extra jaw, spike,
-stinger, poison sac, and electric jet adds damage as `n^0.75` — always worth more, never linear.
+stinger, and poison sac adds damage as `n^0.75` — always worth more, never linear, and never capped.
+(Electric jets stack too, on their own curves: pulse damage as `n^0.4` and pulse radius as `n^0.35`.)
 *Unlock* is the growth level within the part's stage; part meteors can unlock things early.
 
 **Cell-stage parts** (available forever):
@@ -223,7 +211,7 @@ stinger, poison sac, and electric jet adds damage as `n^0.75` — always worth m
 Combat is collision-driven: swim into another organism and every applicable effect resolves
 continuously — jaw bites (if they're your size or smaller), facing spikes, stingers, poison auras —
 while electric jets pulse on their own timer. Damage passes through the defender's armor multiplier;
-fish apply their level-scaled damage bonus to everything they deal. Prey under ~45% of your size is
+fish apply their level-scaled damage bonus to everything they deal. Prey under 45% of your size is
 **swallowed whole** (instant kill, no meat left). Anything else that dies bursts into meat chunks.
 Size is the master variable: growing turns yesterday's predator into today's snack.
 
@@ -233,65 +221,139 @@ gnaw on a giant), so a long body is reach, health, and slots *and* a liability. 
 reduced effect, and the tail fights back: stingers and poison on the defender punish whoever is
 chewing. Guard your tail or armor it — and harass bigger organisms from behind.
 
-## The LLM rivals
+## The pond: biomes, the Leviathan, and the leaderboard
+
+The pond is 6400×4800 and not uniform. Three **biomes** change how you play depending on where you
+swim:
+
+- **Weed thickets** — dark frond beds that slow swimmers to 62% speed but **hide them from AI
+  vision** (rivals only spot you inside a thicket if they're within ~170 px, or in the weeds too).
+  Sanctuaries when you're hunted; ambush cover when you're hunting.
+- **The current** — a horizontal channel that pushes swimmers eastward and drifts loose food along.
+  Ride it to travel fast, or fight it.
+- **The trench** — a dark disc where **half of all algae and meteors** spawn: the richest feeding
+  grounds in the pond, and exactly where the Leviathan lurks between hunts.
+
+Beware the **LEVIATHAN**: once the pond is ~2.5 minutes old, a screen-dominating epic predator can
+rise from the deep (2600 HP, radius 95, armored, spiked, stinging) and hunt the largest organism it
+can find for ~100 seconds before sinking away. Slaying it pays a **+320 DNA jackpot** to whoever
+lands the killing blow. Pulsing red edge-of-screen arrows warn you of off-screen predators that
+outclass you (purple and visible from farther for the Leviathan), and a flashing banner fires when
+its brain has actually targeted *you*. It pulses on the minimap so you can track it.
+
+A live **leaderboard** under the minimap ranks every organism by an **evolution score**
+(1500 per stage + 60 per level + lifetime DNA ÷ 4), showing rank, name, stage tag, score, and a
+signed **vs-you gap** (red = ahead of you, green = behind). You're always on it and highlighted —
+inside the top 10 as a highlighted row, and if you slip below, a divider plus an 11th row with your
+true rank (e.g. "13. You"). The Leviathan is an event, not a competitor, and never ranks.
+
+Every death folds the run into **all-time records** (`records.json`): best survival, best
+stage/level, best fish level, best DNA in a run, total kills, total Leviathans slain, runs played.
+The death screen shows a two-column summary — this run beside your all-time bests — with
+`* NEW RECORD *` flags on anything you just beat.
+
+## AI, autopilot, and the LLM
 
 Rival organisms are steered by a local LLM through Ollama (default `http://192.168.15.38:21434`,
 model `qwen3:4b`):
 
-- **At spawn**, each rival sends the model a snapshot of its surroundings and asks one question:
-  *hunt, harvest, or both?* The answer (carnivore / herbivore / omnivore) decides its starting mouth.
-  The event log announces each choice.
+- **At spawn**, each rival gets a random **personality** (aggressive, cautious, greedy, vengeful,
+  territorial, or curious — shown in its name tag) and sends the model a snapshot of its
+  surroundings, asking one question: *hunt, harvest, or both?* The answer decides its starting mouth.
 - **Every ~6 seconds** afterward, each rival asks for a strategy refresh: a goal
-  (forage / hunt / flee / wander), a diet to work toward, a part wishlist, and whether to grow.
-- **Every frame**, fast heuristics execute the current plan — steering, fleeing reflexes, hunger
-  overrides, purchases, growth, and stage advancement. The model sets direction; the code drives.
+  (forage / hunt / flee / wander), a diet to work toward, a part wishlist, whether to grow, and an
+  optional short **remark** that appears as a speech bubble above its head — the words are the
+  model's own reasoning.
+- **Every frame**, fast heuristics execute the current plan — steering, fleeing reflexes (tuned by
+  personality), hunger overrides, anti-orbit approach, purchases, growth, and stage advancement. The
+  model sets strategy; the code drives.
 
-Requests run on four background worker threads with timeouts, so the game **never** blocks on the
-model. If Ollama is unreachable at launch (or you pass `--no-llm`), rivals fall back to pure
-heuristics and the HUD shows `LLM off`. The HUD's `LLM ok:N fail:N` counter tracks live requests.
+Requests run on **four background worker threads** with timeouts, so the game **never** blocks on
+the model. The bottom-left feed shows LLM traffic live (`-> LLM [name]: ...` requests,
+`<- LLM [name]: ...` replies) alongside the player's own combat. If the model can't keep up, the
+game degrades gracefully: it falls back to heuristics, applies a growing back-off on HTTP 429
+rate-limits, and **every 30 seconds prints exactly why heuristics are driving** — e.g.
+`[LLM] heuristics driving: timeout after 22s (3 in a row)` or `rate-limited (HTTP 429); retrying in
+34s` — announcing `[LLM] back online` the moment it recovers. The top-right HUD status reads
+`LLM ok:N fail:N`, `LLM throttled (429)`, or `LLM off`.
+
+You can hand your own cell to that same brain, at three levels of involvement, all toggleable
+mid-game:
+
+- **`P` — autopilot**: the AI plays your organism entirely (LLM when connected, heuristics
+  otherwise), including answering stage prompts and auto-retrying after death.
+- **`Esc` then `U` — upgrade assist**: you keep steering while the AI spends your DNA on parts and
+  growth. Stage advancement stays your call.
+- **`Esc` then `L` — source toggle**: switch the whole AI (rivals and any autopilot) between the LLM
+  and pure heuristics at runtime, even if you launched with `--no-llm`.
 
 ![The evolution editor in the multicellular stage](docs/evolution_editor.png)
+
+## Sound
+
+There are no audio files. At startup the game synthesizes its whole audio bank sample-by-sample from
+three primitive oscillators (sine, softened square, white noise) with per-sample frequency sweeps
+and attack/decay envelopes:
+
+- **17 effects** — eating blips (pitch-varied per food type), a meteor arpeggio, bite/sting hits, a
+  hurt thud, the electric zap (noise gated by a square wave with a metallic ring), a swallow gulp,
+  grow and four-note stage fanfares, a death fall, a mate ping, editor clicks, a dash whoosh, the
+  Leviathan's sub-bass growl, and a heartbeat that loops while your health is below 25%.
+- **An ambient soundtrack** — a seamless ~24-second underwater loop (crossfading minor chords over a
+  filtered-noise water bed) playing quietly throughout.
+
+Effects are positional (volume falls off with distance from the camera) and rate-limited so a
+feeding frenzy doesn't machine-gun. With no audio device present, the game runs silent.
 
 ## Project layout
 
 ```
-main.py                entry point / CLI parsing
+main.py                entry point / CLI parsing + single-instance lock
 requirements.txt       pygame-ce, requests
 evolved/
   config.py            every tuning constant and color in one place
   parts.py             the part catalog: costs, unlock levels, stages
-  cell.py              the organism: stats, parts, stages, segments, rendering
+  cell.py              the organism: stats, parts, stages, segments, dash, rendering
   entities.py          plants, meat, algae, part meteors
-  world.py             spawning, eating, combat resolution, deaths, restocking
-  ai.py                rival brains: LLM policy + per-frame heuristics
-  llm.py               Ollama client + threaded request manager
-  player.py            keyboard → thrust
-  camera.py            follow camera with size-aware zoom
+  world.py             spawning, eating, combat, deaths, biomes, the Leviathan
+  ai.py                rival brains: LLM policy, personalities, heuristics, the Leviathan brain
+  llm.py               Ollama client + threaded request manager with health diagnostics
+  player.py            keyboard -> thrust
+  camera.py            follow camera with size-aware zoom and screen shake
   editor.py            the evolution editor UI
-  hud.py               HUD, minimap, event log, water background
-  game.py              game states, stage prompts, main loop, screenshot harness
+  particles.py         sparkles, bursts, ripples, bubbles
+  sound.py             procedural sound-effect + music synthesis
+  records.py           persistent all-time records (records.json)
+  hud.py               HUD, minimap, leaderboard, threat arrows, event feed, water background
+  game.py              game states, stage prompts, AI modes, main loop, screenshot harness
 docs/                  README screenshots
 ```
 
 ## Tuning
 
-Nearly every number in the game — speeds, damage, costs, food density, world size, stage pacing —
-lives in [`evolved/config.py`](evolved/config.py) with a comment. Want a bigger pond, cheaper
-growth, meaner poison, or a 20-rival free-for-all? Edit one file.
+Nearly every number in the game — speeds, damage, costs, food density, world size, stage pacing,
+biome strengths, the Leviathan's stats — lives in [`evolved/config.py`](evolved/config.py) with a
+comment. Want a bigger pond, cheaper growth, meaner poison, or a 20-rival free-for-all? Edit one
+file.
 
 ## Troubleshooting
 
-- **`LLM off` in the HUD** — Ollama wasn't reachable at launch. Check the host/port
-  (`--ollama-host`, `--ollama-port`), confirm the model is pulled (`ollama list`), or play with
-  `--no-llm`. The game is fully playable either way.
+- **`LLM off` / `heuristics driving` in the feed** — the game tells you the exact reason every 30 s
+  (unreachable, timeout, HTTP status, rate-limited, or `--no-llm`). Check the host/port
+  (`--ollama-host`, `--ollama-port`), confirm the model is pulled (`ollama list`), or just play on
+  heuristics — the game is fully playable either way, and you can flip the LLM on at runtime with `L`
+  on the pause screen.
+- **`LLM throttled (429)`** — the Ollama server is rate-limiting under load. The game backs off
+  automatically (growing from 6 s up to 60 s) and resumes on its own; no action needed.
 - **Rivals all picked the same strategy** — the model chooses from what it sees; a pond full of
   plants at spawn makes harvesting genuinely attractive. Variety grows as meat enters the ecosystem.
-- **Slow first LLM answers** — cold model load on the Ollama side. Rivals fall back to a random
-  diet after 8 s and honor the model from the next refresh onward.
+- **Slow first LLM answers** — cold model load on the Ollama side. Rivals fall back to a random diet
+  after 8 s and honor the model from the next refresh onward.
 - **Window doesn't open over SSH/headless** — use `--screenshot out.png` for headless runs; it sets
   SDL's dummy video driver automatically.
 
 ## Credits
 
 Design inspired by the Cell Stage of *Spore* (Maxis, 2008). This is an original, non-commercial fan
-reimplementation; no assets from the original game are used. All art is procedural. MIT licensed.
+reimplementation; no assets from the original game are used. All art and audio are procedural.
+MIT licensed.
